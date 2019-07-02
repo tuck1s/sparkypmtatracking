@@ -65,11 +65,24 @@ func main() {
 			console_and_log_fatal("Accounting record not in expected format - should have", expectedLen, "elements")
 		}
 		recType, fromAddr, RcptTo, message_id, tracking_id := r[0], r[1], r[2], r[3], r[4]
-		if recType != "d" {
-			console_and_log_fatal("Accounting record not of type d")
+		switch recType {
+		case "d":
+			// Process delivery record
+			_, err := client.Set("trk_"+tracking_id, message_id, ttl).Result()
+			check(err)
+			log.Println("Loaded", tracking_id, "=", message_id, "into Redis, from=", fromAddr, "RcptTo=", RcptTo)
+			break
+		case "type":
+			// Header record sent at PMTA start
+			log.Print("PMTA accounting headers from pipe", r)
+			if r[1] == "orig" && r[2] == "rcpt" && r[3] == "header_x-sp-message-id" && r[4] == "header_x-tracking-id" {
+				log.Println("as expected by this application")
+				break
+			} else {
+				console_and_log_fatal("Accounting record not in expected format")
+			}
+		default:
+			console_and_log_fatal("Accounting record not of type d:", r)
 		}
-		_, err := client.Set("trk_"+tracking_id, message_id, ttl).Result()
-		check(err)
-		log.Println("Loaded", tracking_id, "=", message_id, "into Redis, from=", fromAddr, "RcptTo=", RcptTo)
 	}
 }
