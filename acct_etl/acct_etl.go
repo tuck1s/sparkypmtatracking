@@ -57,7 +57,7 @@ func main() {
 
 	const ttl = time.Duration(time.Hour * 24 * 10)
 	const expectedLen = 5
-	// Scan input records - expected format recType, fromAddr, RcptTo, message_id, tracking_id
+	// Scan input records - expected format: type,orig,rcpt,header_x-sp-message-id,header_x-tracking-id
 	input := csv.NewScanner(inbuf)
 	for input.Scan() {
 		r := input.Record()
@@ -67,10 +67,10 @@ func main() {
 		recType, fromAddr, RcptTo, message_id, tracking_id := r[0], r[1], r[2], r[3], r[4]
 		switch recType {
 		case "d":
-			// Process delivery record
+			// Set key tracking_id -> message_id in Redis. We don't keep from/to.
 			_, err := client.Set("trk_"+tracking_id, message_id, ttl).Result()
 			check(err)
-			log.Println("Loaded", tracking_id, "=", message_id, "into Redis, from=", fromAddr, "RcptTo=", RcptTo)
+			log.Println("Loaded", tracking_id, "->", message_id, "into Redis, orig=", fromAddr, "rcpt=", RcptTo)
 			break
 		case "type":
 			// Header record sent at PMTA start

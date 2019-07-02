@@ -1,15 +1,88 @@
 # sparkyPmtaTracking
-Open and click tracking modules for PMTA and SparkPost Signals.
+Open and click tracking modules for PMTA and SparkPost Signals:
 
-Pre-requisites
-- Redis
-
-## proc_acct
-Process accounting data fed by PMTA pipe - [see here](https://download.port25.com/files/UsersGuide.html#examples).
+|app|description|
+|---|---|
+|`acct_etl`|Extract, transform, load piped PMTA Accounting files into Redis|
 
 
+## Pre-requisites
+- Redis (Installation tips [here](#Installing Redis on your host))
+- Git
+- Golang
+
+Check you have `redis` installed and working
+
+```
+redis-cli --version
+```
+you should see `redis-cli 5.0.5` or similar
+```
+redis-cli PING
+```
+you should see `PONG`
 
 
+Get this project with `git clone`, and dependencies with `go get`.
+
+```
+git clone https://github.com/tuck1s/sparkyPmtaTracking.git
+cd sparkyPmtaTracking/
+go get github.com/go-redis/redis
+go get github.com/smartystreets/scanners/csv
+```
+
+Installation instructions follow, for each app.
+
+
+## acct_etl
+Extract, transform and load accounting data fed by [PMTA pipe](https://download.port25.com/files/UsersGuide.html#examples) 
+into Redis.
+
+PMTA config needs to include the following accounting pipe:
+```
+# Pipe into engagement tracking correlator. Expects a custom header in the injected mail also. 
+<acct-file |/usr/local/bin/acct_etl>
+    records d
+    record-fields d orig,rcpt,header_x-sp-message-id,header_x-tracking-id
+</acct-file>
+```
+
+```
+cd acct_etl/
+go build
+
+# test your build worked OK on example file. This should show some log entries.
+./acct_etl example.csv
+tail /opt/pmta/acct_etl.log
+
+# copy executable to a place where PMTA can run it. Need to temporarily stop PMTA
+sudo service pmta stop
+sudo cp ./acct_etl /usr/local/bin/acct_etl
+sudo chown pmta:pmta /usr/local/bin/acct_etl
+sudo service pmta start
+```
+
+Check your PMTA log, there should not be startup errors.
+
+The app logs into `/opt/pmta/acct_etl.log`, you should see
+```
+2019/07/02 17:26:15 PMTA accounting headers from pipe[type orig rcpt header_x-sp-message-id header_x-tracking-id]
+2019/07/02 17:26:15 as expected by this application
+```
+
+Present some traffic to PMTA. The injected message should include a custom header `X-Tracking-Id`.
+The above logfile should show entries such as
+```
+2019/07/02 17:30:04 Loaded 73277140a64645b0adee046cc7250e1f = F8AD9C941B5DBCA6B208 into Redis, from= test@pmta.signalsdemo.trymsys.net RcptTo= test+00073442@not-gmail.com.bouncy-sink.trymsys.net
+2019/07/02 17:30:04 Loaded 2a889abbbea34370b9a85c902eb5b031 = 697C9C941B5D03CFA658 into Redis, from= test@pmta.signalsdemo.trymsys.net RcptTo= test+00179890@not-yahoo.co.uk.bouncy-sink.trymsys.net
+```
+
+Redis entries comprising key/value pairs of (x-tracking-id, x-sp-meessage-id) are set,
+with configured time-to-live of 10 days (matching SparkPost's event retention).
+
+
+---
 ### Installing Redis on your host
 
 Redis does not currently seem to be available via a package manager on EC2 Linux.
@@ -41,3 +114,9 @@ sudo /etc/init.d/redis_6379 start
 # test
 redis-cli ping
 ```
+
+### Installing Git, Golang on your host
+Your package manager should install these for you, e.g.
+```
+sudo yum install git go
+``` 
