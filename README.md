@@ -7,7 +7,7 @@ Open and click tracking modules for PMTA and SparkPost Signals:
 
 
 ## Pre-requisites
-- Redis (Installation tips [here](#Installing Redis on your host))
+- Redis - installation tips [here](#installing-redis-on-your-host)
 - Git
 - Golang
 
