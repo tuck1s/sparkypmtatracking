@@ -3,15 +3,18 @@ Open and click tracking modules for PMTA and SparkPost Signals:
 
 |app|description|
 |---|---|
-|`acct_etl`|Extract, transform, load piped PMTA Accounting files into Redis|
-
+|`acct_etl`|Extract, transform, load piped PMTA custom accounting stream into Redis|
+|`tracker`|Web service that decodes client email opens and clicks|
+|`wrapper`|SMTP proxy service that wraps html links in messages and adds `X-Tracking-Id` header|
+|`feeder`|Takes open & click events, correlates them and feeds them to the SparkPost Signals [Ingest API](https://developers.sparkpost.com/api/events-ingest/)|
 
 ## Pre-requisites
 - Redis - installation tips [here](#installing-redis-on-your-host)
 - Git
 - Golang
 
-Check you have `redis` installed and working
+Check you have `redis` installed and working. This project assumes it is available 
+on the default port `6379` on your host.
 
 ```
 redis-cli --version
@@ -39,7 +42,7 @@ Installation instructions follow, for each app.
 Extract, transform and load accounting data fed by [PMTA pipe](https://download.port25.com/files/UsersGuide.html#examples) 
 into Redis.
 
-PMTA config needs to include the following accounting pipe:
+PMTA config needs to have the following accounting pipe:
 ```
 # Pipe into engagement tracking correlator. Expects a custom header in the injected mail also. 
 <acct-file |/usr/local/bin/acct_etl>
@@ -48,6 +51,7 @@ PMTA config needs to include the following accounting pipe:
 </acct-file>
 ```
 
+Build, test this app and hook it into PMTA.
 ```
 cd acct_etl/
 go build
@@ -78,9 +82,12 @@ The above logfile should show entries such as
 2019/07/02 17:30:04 Loaded 2a889abbbea34370b9a85c902eb5b031 = 697C9C941B5D03CFA658 into Redis, from= test@pmta.signalsdemo.trymsys.net RcptTo= test+00179890@not-yahoo.co.uk.bouncy-sink.trymsys.net
 ```
 
-Redis entries comprising key/value pairs of (x-tracking-id, x-sp-meessage-id) are set,
+Redis entries comprising key/value pairs of `(x-tracking-id, x-sp-meessage-id)` are set,
 with configured time-to-live of 10 days (matching SparkPost's event retention).
-
+You can list these keys with
+```
+redis-cli keys "trk_*"
+```
 
 ---
 ### Installing Redis on your host
