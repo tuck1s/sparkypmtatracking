@@ -42,6 +42,7 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	data, err := ioutil.ReadAll(d) // data is a []byte representation of JSON data, ideal for queuing
+	log.Println(string(data))
 
 	// Prepare to load a record into Redis. Assume server is on the standard port
 	client := redis.NewClient(&redis.Options{
@@ -49,7 +50,6 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
-	log.Println(string(data))
 	_, err = client.RPush(RedisQueue, data).Result()
 	if err != nil {
 		log.Println("Redis error", err)
@@ -57,7 +57,10 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/plain")
-	w.Write([]byte("OK\n"))
+	_, err = w.Write([]byte("OK\n"))
+	if err != nil {
+		log.Println("html.ResponseWriter error", err)
+	}
 }
 
 func main() {
