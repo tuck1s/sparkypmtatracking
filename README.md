@@ -89,6 +89,29 @@ You can list these keys with
 redis-cli keys "trk_*"
 ```
 
+## tracker
+The tracker web service expects to receive URL requests of the form
+
+```
+http://pmta.signalsdemo.trymsys.net/tracking/open/eJxdT81uwyAMfpWI6xqSbolYeuoDrKc9AHKIoawBInCqRlXffVBt0jT5Ytnf750pcAtY46Wd2KFiH5CoOlm_ElafcLXeJLarWFQLSQoFQZjopW3bYS-G_ugD1SGCN8h15GNYvdrqZP2FU9xc2hL3SEXBJSN1DO5X4pgIr0h12f9jn24OCTL4_siHtI5fqKhw_4QiiAZJztlNrnEu3zPRcmgavOVWM3IVXGP9hDd-Jjc_ORHUJQv81N0LGF_LdAI6_T5B1-Nbr4dOTEKrHtnjG0smYWM=
+```
+
+These strings are base64-encoded (URL safe), Zlib-compressed, minified JSON. The code strips
+these layers off to reveal the underlying minified JSON bytestring, i.e.
+
+```
+{"campaign_id": "Last Minute Savings", "rcpt_to": "test+00091795@not-orange.fr.bouncy-sink.trymsys.net", "msg_from": "test@stevet-test.trymsys.net", "rcpt_meta": {}, "subject": "Savings", "target_link_url": "http://example.com/index.html", "tracking_id": "17ab2b2b247a4f8da45e35f947d7fc5e"}
+```
+
+The bytestring data is pushed into a Redis queue for the feeder.
+
+## feeder
+
+TODO
+## wrapper
+
+TODO
+
 ---
 ### Installing Redis on your host
 
