@@ -59,7 +59,7 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	_, err = w.Write([]byte("OK\n"))
 	if err != nil {
-		log.Println("html.ResponseWriter error", err)
+		log.Println("http.ResponseWriter error", err)
 	}
 }
 
