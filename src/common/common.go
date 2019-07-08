@@ -18,6 +18,16 @@ func Console_and_log_fatal(s ...interface{}) {
 
 const RedisQueue = "trk_queue"
 
+type GeoIP struct {
+	Country    string
+	Region     string
+	City       string
+	Latitude   float64
+	Longitude  float64
+	Zip        int
+	PostalCode string
+}
+
 // Tracking event data passed in this project's tracking URLs (and in the Redis event queue)
 type TrackEvent struct {
 	Type          string   `json:"type"` // added from the URL literal path
@@ -45,7 +55,7 @@ type SparkPostEvent struct {
 			ClickTracking bool     `json:"click_tracking"`
 			DelvMethod    string   `json:"delv_method"`
 			EventID       string   `json:"event_id"`
-			GeoIP         struct{} `json:"geo_ip"`
+			GeoIP         GeoIP    `json:"geo_ip"`
 			InitialPixel  bool     `json:"initial_pixel"`
 			MessageID     string   `json:"message_id"`
 			RcptTags      []string `json:"rcpt_tags"`

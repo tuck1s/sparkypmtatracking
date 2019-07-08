@@ -10,7 +10,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-redis/redis"
 )
@@ -51,6 +53,10 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	e.Type = s[1] // add the event type in from the path
+	e.UserAgent = req.UserAgent()
+	t := time.Now().Unix()
+	e.TimeStamp = strconv.FormatInt(t, 10)
+
 	eBytes, err = json.Marshal(e)
 	if err != nil {
 		log.Println(err)
