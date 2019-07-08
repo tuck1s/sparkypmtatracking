@@ -11,6 +11,7 @@ import (
 	. "github.com/sparkyPmtaTracking/src/common"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -55,7 +56,7 @@ const ingestMaxWait = 10 * time.Second
 
 // Prepare a batch of TrackingEvents for ingest to SparkPost.
 // Because the JSON declarations coincide, we can unmarshal a TrackingEvent into the leaf part of a SparkPostEvent
-func sparkPostIngest(batch []string, client *redis.Client) {
+func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey string) {
 	var ingestData bytes.Buffer
 	ingestData.Grow(1024 * len(batch)) // Preallocate approx size of the string for efficiency
 	for _, eStr := range batch {
@@ -85,20 +86,38 @@ func sparkPostIngest(batch []string, client *redis.Client) {
 		ingestData.Write(s)
 		ingestData.WriteString("\n")
 	}
-	// Now got ingestData in buffer - flow through gzip writer
+	// Now have ingestData in buffer - flow through gzip writer
 	var zbuf bytes.Buffer
 	ir := bufio.NewReader(&ingestData)
 	zw := gzip.NewWriter(&zbuf)
 	_, err := io.Copy(zw, ir)
 	Check(err)
-	err = zw.Close()
-	Check(err)
-	//
-	zr := bufio.NewReader(&zbuf)
-	hd := hex.Dumper(os.Stdout)
-	_, err = io.Copy(hd, zr)
+	err = zw.Close() // ensure all data written (seems to be necessary)
 	Check(err)
 
+	// Prepare the https POST request
+	zr := bufio.NewReader(&zbuf)
+	var netClient = &http.Client{
+		Timeout: time.Second * 300,
+	}
+	url := host + "/api/v1/ingest/events"
+	req, err := http.NewRequest("POST", url, zr)
+	Check(err)
+	req.Header = map[string][]string{
+		"Authorization":    {apiKey},
+		"Content-Type":     {"application/x-ndjson"},
+		"Content-Encoding": {"gzip"},
+	}
+	res, err := netClient.Do(req)
+	Check(err)
+
+	var resObj IngestResult
+	respRd := json.NewDecoder(res.Body)
+	err = respRd.Decode(&resObj)
+	Check(err)
+	log.Println(res.Status, "results.id=", resObj.Results.Id)
+	err = res.Body.Close()
+	Check(err)
 }
 
 func main() {
@@ -113,13 +132,22 @@ func main() {
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
+
+	// Get SparkPost ingest credentials from env vars
+	host := HostCleanup(GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
+	apiKey := GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
+	if apiKey == "" {
+		Console_and_log_fatal("SPARKPOST_API_KEY_INGEST not set - stopping")
+	}
+
+	// Process forever data arriving via Redis queue
 	trackingData := make([]string, 0, ingestBatchSize) // Pre-allocate for efficiency
 	for {
 		d, err := client.LPop(RedisQueue).Result()
 		if err == redis.Nil {
 			// special value means queue is empty. Ingest any data we have collected, then wait a while
 			if len(trackingData) > 0 {
-				sparkPostIngest(trackingData, client)
+				sparkPostIngest(trackingData, client, host, apiKey)
 				trackingData = trackingData[:0] // empty the data, but keep capacity allocated
 			}
 			fmt.Println("Sleeping ..")
@@ -131,7 +159,7 @@ func main() {
 				// stash data away for later. If we have a full batch, SparkPost sparkPostIngest it
 				trackingData = append(trackingData, d)
 				if len(trackingData) >= ingestBatchSize {
-					sparkPostIngest(trackingData, client)
+					sparkPostIngest(trackingData, client, host, apiKey)
 					trackingData = trackingData[:0] // empty the data, but keep capacity allocated
 				}
 			}

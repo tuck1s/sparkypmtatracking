@@ -3,6 +3,8 @@ package common
 import (
 	"fmt"
 	"log"
+	"os"
+	"strings"
 )
 
 func Check(e error) {
@@ -14,6 +16,25 @@ func Check(e error) {
 func Console_and_log_fatal(s ...interface{}) {
 	fmt.Println(s...)
 	log.Fatalln(s...)
+}
+
+func GetenvDefault(k string, d string) string {
+	x := os.Getenv(k)
+	if x == "" {
+		x = d
+	}
+	return x
+}
+
+// Clean up SparkPost host address into canonical form (with schema, without /api/v1 path)
+func HostCleanup(host string) string {
+	if !strings.HasPrefix(host, "https://") {
+		host = "https://" + host // Add schema
+	}
+	host = strings.TrimSuffix(host, "/")
+	host = strings.TrimSuffix(host, "/api/v1")
+	host = strings.TrimSuffix(host, "/")
+	return host
 }
 
 const RedisQueue = "trk_queue"
@@ -42,11 +63,10 @@ type TrackEvent struct {
 	UserAgent     string   `json:"user_agent"` // Added by tracker
 }
 
-// Tracking event for SparkPost Ingest API. Note the double wrapping. There are some fields we're not populating:
+// Tracking event for SparkPost Ingest API. Note the nesting. There are some fields we're not populating:
 // ab_test_id, ab_test_version, injection_time, ip_address, ip_pool, msg_size, num_retries, queue_time,
 // raw_rcpt_to, rcpt_type, sending_ip, subaccount_id, target_link_name, template_id, template_version, transactional,
 // transmission_id, binding_group, binding
-
 type SparkPostEvent struct {
 	EventWrapper struct {
 		EventGrouping struct {
@@ -70,4 +90,11 @@ type SparkPostEvent struct {
 			UserAgent     string   `json:"user_agent"`
 		} `json:"track_event"`
 	} `json:"msys"`
+}
+
+// Result object coming back from SparkPost
+type IngestResult struct {
+	Results struct {
+		Id string `json:"id"`
+	} `json:"results"`
 }
