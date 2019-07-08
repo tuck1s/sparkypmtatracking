@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -13,11 +14,16 @@ import (
 
 // For efficiency under high load conditions, collect n events into a batch
 const ingestBatchSize = 10000
-const ingestMaxWait = 60 * time.Second
+const ingestMaxWait = 10 * time.Second
+
+func makeSparkPostEvent() {
+}
 
 func ingest(batch []string) {
-	if len(batch) > 0 {
-		fmt.Println(batch)
+	for _, eStr := range batch {
+		var e TrackEvent
+		err := json.Unmarshal([]byte(eStr), &e)
+		Check(err)
 	}
 }
 
@@ -38,7 +44,7 @@ func main() {
 		d, err := client.LPop(RedisQueue).Result()
 		if err == redis.Nil {
 			// special value means queue is empty. SparkPost ingest any data we have collected, then wait a while
-			if len(trackingData) >= 0 {
+			if len(trackingData) > 0 {
 				ingest(trackingData)
 				trackingData = trackingData[:0] // empty the data, but keep capacity allocated
 			}

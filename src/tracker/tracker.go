@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/base64"
+	"encoding/json"
 	. "github.com/sparkyPmtaTracking/src/common"
 	"io/ioutil"
 	"log"
@@ -35,14 +36,28 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	d, err := zlib.NewReader(bytes.NewReader(zdata))
+	eReader, err := zlib.NewReader(bytes.NewReader(zdata))
 	if err != nil {
 		log.Println("Invalid zlib data found:", zdata)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	data, err := ioutil.ReadAll(d) // data is a []byte representation of JSON data, ideal for queuing
-	log.Println(string(data))
+	eBytes, err := ioutil.ReadAll(eReader) // []byte representation of JSON
+	var e TrackEvent
+	err = json.Unmarshal(eBytes, &e)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	e.Type = s[1] // add the event type in from the path
+	eBytes, err = json.Marshal(e)
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	log.Println(e)
 
 	// Prepare to load a record into Redis. Assume server is on the standard port
 	client := redis.NewClient(&redis.Options{
@@ -50,7 +65,7 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		Password: "", // no password set
 		DB:       0,  // use default DB
 	})
-	_, err = client.RPush(RedisQueue, data).Result()
+	_, err = client.RPush(RedisQueue, eBytes).Result()
 	if err != nil {
 		log.Println("Redis error", err)
 		w.WriteHeader(http.StatusInternalServerError)
