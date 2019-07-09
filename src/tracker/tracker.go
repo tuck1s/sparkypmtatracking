@@ -23,6 +23,10 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 	// These are written to the Redis queue
 
 	s := strings.Split(req.URL.Path[1:], "/")
+	if len(s) < 3 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
 	switch s[1] {
 	case "open":
 		break

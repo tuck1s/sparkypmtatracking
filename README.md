@@ -29,6 +29,10 @@ you should see `PONG`
 Get this project with `git clone`, and dependencies with `go get`.
 
 ```
+# Let's assume your GOPATH is the usual, i.e.
+export GOPATH=$HOME/go
+
+cd ~/go/src/github.com/
 git clone https://github.com/tuck1s/sparkyPmtaTracking.git
 cd sparkyPmtaTracking/
 go get github.com/go-redis/redis
@@ -39,7 +43,7 @@ Installation instructions follow, for each app.
 
 
 ## acct_etl
-Extract, transform and load accounting data fed by [PMTA pipe](https://download.port25.com/files/UsersGuide.html#examples) 
+Extracts, transforms and loads accounting data fed by [PMTA pipe](https://download.port25.com/files/UsersGuide.html#examples) 
 into Redis.
 
 PMTA config needs to have the following accounting pipe:
@@ -53,16 +57,17 @@ PMTA config needs to have the following accounting pipe:
 
 Build, test this app and hook it into PMTA.
 ```
-cd acct_etl/
+cd ~/go/src/github.com/sparkyPmtaTracking/src/acct_etl
 go build
+cd ../..
 
-# test your build worked OK on example file. This should show some log entries.
-./acct_etl example.csv
-tail /opt/pmta/acct_etl.log
+# test your build worked OK on example file. This should write log entries in your current dir.
+src/acct_etl/acct_etl example.csv
+cat acct_etl.log
 
-# copy executable to a place where PMTA can run it. Need to temporarily stop PMTA
+# copy executable to a place where PMTA can run it, and set owner. Need to temporarily stop PMTA
 sudo service pmta stop
-sudo cp ./acct_etl /usr/local/bin/acct_etl
+sudo cp src/acct_etl/acct_etl /usr/local/bin/acct_etl
 sudo chown pmta:pmta /usr/local/bin/acct_etl
 sudo service pmta start
 ```
@@ -75,8 +80,8 @@ The app logs into `/opt/pmta/acct_etl.log`, you should see
 2019/07/02 17:26:15 as expected by this application
 ```
 
-Present some traffic to PMTA. The injected message should include a custom header `X-Tracking-Id`.
-The above logfile should show entries such as
+Present some traffic to PMTA. The injected message needs to include a custom header `X-Tracking-Id`.
+The logfile should show entries such as
 ```
 2019/07/02 17:30:04 Loaded 73277140a64645b0adee046cc7250e1f = F8AD9C941B5DBCA6B208 into Redis, from= test@pmta.signalsdemo.trymsys.net RcptTo= test+00073442@not-gmail.com.bouncy-sink.trymsys.net
 2019/07/02 17:30:04 Loaded 2a889abbbea34370b9a85c902eb5b031 = 697C9C941B5D03CFA658 into Redis, from= test@pmta.signalsdemo.trymsys.net RcptTo= test+00179890@not-yahoo.co.uk.bouncy-sink.trymsys.net
@@ -90,24 +95,45 @@ redis-cli keys "trk_*"
 ```
 
 ## tracker
-The tracker web service expects to receive URL requests of the form
+
+To install:
 
 ```
-http://pmta.signalsdemo.trymsys.net/tracking/open/eJxdT81uwyAMfpWI6xqSbolYeuoDrKc9AHKIoawBInCqRlXffVBt0jT5Ytnf750pcAtY46Wd2KFiH5CoOlm_ElafcLXeJLarWFQLSQoFQZjopW3bYS-G_ugD1SGCN8h15GNYvdrqZP2FU9xc2hL3SEXBJSN1DO5X4pgIr0h12f9jn24OCTL4_siHtI5fqKhw_4QiiAZJztlNrnEu3zPRcmgavOVWM3IVXGP9hDd-Jjc_ORHUJQv81N0LGF_LdAI6_T5B1-Nbr4dOTEKrHtnjG0smYWM=
+cd ~/go/src/github.com/sparkyPmtaTracking/src/tracker
+go build
+cd ../..
+```
+To test, run from the command line. This will listen on port 8888 for incoming requests.
+```
+src/tracker/tracker &
 ```
 
-These strings are base64-encoded (URL safe), Zlib-compressed, minified JSON. The code strips
-these layers off to reveal the underlying minified JSON bytestring, i.e.
+Test it's working using the following example
 
 ```
-{"campaign_id": "Last Minute Savings", "rcpt_to": "test+00091795@not-orange.fr.bouncy-sink.trymsys.net", "msg_from": "test@stevet-test.trymsys.net", "rcpt_meta": {}, "subject": "Savings", "target_link_url": "http://example.com/index.html", "tracking_id": "17ab2b2b247a4f8da45e35f947d7fc5e"}
+curl -v localhost:8888/tracking/open/eJxdT81uwyAMfpWI6xqSbolYeuoDrKc9AHKIoawBInCqRlXffVBt0jT5Ytnf750pcAtY46Wd2KFiH5CoOlm_ElafcLXeJLarWFQLSQoFQZjopW3bYS-G_ugD1SGCN8h15GNYvdrqZP2FU9xc2hL3SEXBJSN1DO5X4pgIr0h12f9jn24OCTL4_siHtI5fqKhw_4QiiAZJztlNrnEu3zPRcmgavOVWM3IVXGP9hDd-Jjc_ORHUJQv81N0LGF_LdAI6_T5B1-Nbr4dOTEKrHtnjG0smYWM=
 ```
 
-The bytestring data is pushed into a Redis queue for the feeder.
+Check the local logfile output with `cat tracker.log`
+
+```
+2019/07/09 15:09:36 {open Last Minute Savings test+00091795@not-orange.fr.bouncy-sink.trymsys.net test@stevet-test.trymsys.net {} Savings 1562684976 http://example.com/index.html 17ab2b2b247a4f8da45e35f947d7fc5e curl/7.61.1}
+``` 
+
+### Internals
+The tracker web service receives URL requests with the path carrying base64-encoded (URL safe), Zlib-compressed, minified JSON.
+Each event is augmented with
+- event type (open, click)
+- user agent
+- timestamp (time of opening / clicking)
+
+and pushed into a Redis queue for the feeder task (using `RPUSH`).
+
+It's usual to deploy a proxy such as `nginx` in front of this service.
 
 ## feeder
 
-TODO
+The feeder task 
 ## wrapper
 
 TODO
@@ -145,8 +171,32 @@ sudo /etc/init.d/redis_6379 start
 redis-cli ping
 ```
 
+# Appendix: additional configuration
 ### Installing Git, Golang on your host
 Your package manager should install these for you, e.g.
 ```
 sudo yum install git go
 ``` 
+
+### Installing and configuring nginx proxy
+
+
+```
+sudo yum install nginx
+sudo vim /etc/nginx/conf.d/server1.conf
+```
+Paste in the contents of `server1.conf` from this project, and modify to suit your server address and environment.
+
+If you wish to use port 80 for tracking, check the main config file `/etc/nginx/nginx.conf` is not serving ordinary files by default.
+You may need to delete the existing `server { .. }` stanza. Then
+```
+sudo service nginx start
+```
+
+Check the endpoint is active using `curl`:
+
+
+Ensure nginx starts on boot:
+```
+sudo chkconfig nginx on
+```
