@@ -1,0 +1,5 @@
+#
+# Example cronfile for running the tracker and feeder on your own server
+#
+# We don't need sudo to run these apps
+@reboot ~/go/src/github.com/sparkyPmtaTracking/start.sh
