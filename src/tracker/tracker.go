@@ -5,6 +5,7 @@ import (
 	"compress/zlib"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/go-redis/redis"
 	. "github.com/sparkyPmtaTracking/src/common"
 	"io/ioutil"
 	"log"
@@ -13,8 +14,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/go-redis/redis"
 )
 
 func TrackingServer(w http.ResponseWriter, req *http.Request) {
@@ -27,12 +26,12 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	switch s[1] {
-	case "open":
-		break
-	case "click":
-		break
-	default:
+	var e TrackEvent
+	e.Type = s[1] // add the event type in from the path
+	e.UserAgent = req.UserAgent()
+	t := time.Now().Unix()
+	e.TimeStamp = strconv.FormatInt(t, 10)
+	if e.Type != "open" && e.Type != "click" {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
@@ -49,18 +48,12 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	eBytes, err := ioutil.ReadAll(eReader) // []byte representation of JSON
-	var e TrackEvent
 	err = json.Unmarshal(eBytes, &e)
 	if err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	e.Type = s[1] // add the event type in from the path
-	e.UserAgent = req.UserAgent()
-	t := time.Now().Unix()
-	e.TimeStamp = strconv.FormatInt(t, 10)
-
 	eBytes, err = json.Marshal(e)
 	if err != nil {
 		log.Println(err)
@@ -81,10 +74,30 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain")
-	_, err = w.Write([]byte("OK\n"))
-	if err != nil {
-		log.Println("http.ResponseWriter error", err)
+
+	// Emulate response that SparkPost gives on GET opens, clicks and OPTIONS method. Change as required
+	w.Header().Set("Server", "msys-http")
+	w.Header().Set("X-Robots-Tag", "noindex")
+
+	// Special value expected by Bouncy Sink. Not needed for production applications
+	w.Header().Set("X-MSYS", "Signals SMTP Traffic Generator Tracking Endpoint")
+	if req.Method == "GET" {
+		switch e.Type {
+		case "open":
+			w.Header().Set("Content-Type", "image/gif")
+			w.Header().Set("Cache-Control", "no-cache, max-age=0")
+			transparentGif := []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff" +
+				"\xff\xff\xff\x21\xf9\x04\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00" +
+				"\x01\x00\x01\x00\x00\x02\x02\x4c\x01\x00\x3b\x00")
+			_, err = w.Write(transparentGif)
+			if err != nil {
+				log.Println("http.ResponseWriter error", err)
+			}
+		case "click":
+			w.Header().Set("Content-Type", "text/plain")
+			w.Header().Set("Location", e.TargetLinkUrl)
+			w.WriteHeader(http.StatusFound)
+		}
 	}
 }
 

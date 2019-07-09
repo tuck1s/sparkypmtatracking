@@ -35,8 +35,11 @@ export GOPATH=$HOME/go
 cd ~/go/src/github.com/
 git clone https://github.com/tuck1s/sparkyPmtaTracking.git
 cd sparkyPmtaTracking/
+
+# Get needed go packages
 go get github.com/go-redis/redis
 go get github.com/smartystreets/scanners/csv
+go get github.com/google/uuid
 ```
 
 Installation instructions follow, for each app.
@@ -193,10 +196,16 @@ You may need to delete the existing `server { .. }` stanza. Then
 sudo service nginx start
 ```
 
-Check the endpoint is active using `curl`:
-
+Check the endpoint is active from another host, using `curl` as above, but using your external host address and port number.
 
 Ensure nginx starts on boot:
 ```
 sudo chkconfig nginx on
 ```
+
+### Starting these applications on boot
+Script `start.sh` is provided for this purpose. You can make it run on boot using
+```
+crontab cronfile
+```
+or `crontab -e` then paste in cronfile contents.

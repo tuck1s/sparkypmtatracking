@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	. "github.com/sparkyPmtaTracking/src/common"
 	"io"
 	"log"
@@ -115,7 +114,7 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	respRd := json.NewDecoder(res.Body)
 	err = respRd.Decode(&resObj)
 	Check(err)
-	log.Println(res.Status, "results.id=", resObj.Results.Id)
+	log.Println("SparkPost Ingest response:", res.Status, "results.id=", resObj.Results.Id)
 	err = res.Body.Close()
 	Check(err)
 }
@@ -150,7 +149,6 @@ func main() {
 				sparkPostIngest(trackingData, client, host, apiKey)
 				trackingData = trackingData[:0] // empty the data, but keep capacity allocated
 			}
-			fmt.Println("Sleeping ..")
 			time.Sleep(ingestMaxWait)
 		} else {
 			if err != nil {
