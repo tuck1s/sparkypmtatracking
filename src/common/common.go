@@ -75,6 +75,7 @@ type SparkPostEvent struct {
 			ClickTracking bool     `json:"click_tracking"`
 			DelvMethod    string   `json:"delv_method"`
 			EventID       string   `json:"event_id"`
+			FriendlyFrom  string   `json:"friendly_from"`
 			GeoIP         GeoIP    `json:"geo_ip"`
 			InitialPixel  bool     `json:"initial_pixel"`
 			MessageID     string   `json:"message_id"`

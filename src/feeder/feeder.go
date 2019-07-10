@@ -20,6 +20,19 @@ import (
 	"github.com/google/uuid"
 )
 
+// Make a fake GeoIP
+func fakeGeoIP() GeoIP {
+	return GeoIP{
+		Country:    "US",
+		Region:     "MD",
+		City:       "Columbia",
+		Latitude:   39.1749,
+		Longitude:  -76.8375,
+		Zip:        21046,
+		PostalCode: "21046",
+	}
+}
+
 // Make a SparkPost formatted unique event_id, which needs to be a decimal string 0 .. (2^63-1)
 func uniqEventId() string {
 	u := uuid.New()
@@ -49,9 +62,9 @@ func trackingIDToMessageID(eStr string, client *redis.Client) string {
 	return msgID
 }
 
-// For efficiency under high load conditions, collect n events into a batch
-const ingestBatchSize = 10000
-const ingestMaxWait = 10 * time.Second
+// For efficiency under load, collect n events into a batch
+const ingestBatchSize = 1000
+const ingestMaxWait = 60 * time.Second
 
 // Prepare a batch of TrackingEvents for ingest to SparkPost.
 // Because the JSON declarations coincide, we can unmarshal a TrackingEvent into the leaf part of a SparkPostEvent
@@ -65,26 +78,21 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 		Check(err)
 		// Fill in some fields with default values
 		eptr.DelvMethod = "esmtp"
-		eptr.GeoIP = GeoIP{
-			Country:    "US",
-			Region:     "MD",
-			City:       "Columbia",
-			Latitude:   39.1749,
-			Longitude:  -76.8375,
-			Zip:        21046,
-			PostalCode: "21046",
-		}
+		eptr.GeoIP = fakeGeoIP()
 		eptr.EventID = uniqEventId()
 		eptr.InitialPixel = false
 		eptr.MessageID = trackingIDToMessageID(eStr, client)
 		eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
 		eptr.ClickTracking = true
 		eptr.OpenTracking = true
+		eptr.FriendlyFrom = eptr.MsgFrom //TODO: really should be MsgFrom == Return-Path:
+		// Marshal to string
 		s, err := json.Marshal(e)
 		Check(err)
 		ingestData.Write(s)
 		ingestData.WriteString("\n")
 	}
+
 	// Now have ingestData in buffer - flow through gzip writer
 	var zbuf bytes.Buffer
 	ir := bufio.NewReader(&ingestData)
@@ -93,6 +101,7 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	Check(err)
 	err = zw.Close() // ensure all data written (seems to be necessary)
 	Check(err)
+	gzipSize := zbuf.Len()
 
 	// Prepare the https POST request
 	zr := bufio.NewReader(&zbuf)
@@ -114,7 +123,7 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	respRd := json.NewDecoder(res.Body)
 	err = respRd.Decode(&resObj)
 	Check(err)
-	log.Println("SparkPost Ingest response:", res.Status, "results.id=", resObj.Results.Id)
+	log.Println("Uploaded", len(batch), "events", gzipSize, "bytes (gzip), SparkPost Ingest response:", res.Status, "results.id=", resObj.Results.Id)
 	err = res.Body.Close()
 	Check(err)
 }
