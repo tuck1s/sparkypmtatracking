@@ -81,7 +81,8 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 
 	// Special value expected by Bouncy Sink. Not needed for production applications
 	w.Header().Set("X-MSYS", "Signals SMTP Traffic Generator Tracking Endpoint")
-	if req.Method == "GET" {
+	switch req.Method {
+	case "GET":
 		switch e.Type {
 		case "open":
 			w.Header().Set("Content-Type", "image/gif")
@@ -98,6 +99,10 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Location", e.TargetLinkUrl)
 			w.WriteHeader(http.StatusFound)
 		}
+	case "OPTIONS":
+		// Emulate what SparkPost engagement tracker endpoint does. Not strictly necessary for PMTA
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusMethodNotAllowed)
 	}
 }
 
