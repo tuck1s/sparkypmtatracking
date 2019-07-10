@@ -99,7 +99,7 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 			w.Header().Set("Location", e.TargetLinkUrl)
 			w.WriteHeader(http.StatusFound)
 		}
-	case "OPTIONS":
+	default:
 		// Emulate what SparkPost engagement tracker endpoint does. Not strictly necessary for PMTA
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusMethodNotAllowed)
