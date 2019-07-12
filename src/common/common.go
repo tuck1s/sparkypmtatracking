@@ -78,6 +78,7 @@ type SparkPostEvent struct {
 			FriendlyFrom  string   `json:"friendly_from"`
 			GeoIP         GeoIP    `json:"geo_ip"`
 			InitialPixel  bool     `json:"initial_pixel"`
+			IPPool        string   `json:"ip_pool"`
 			MessageID     string   `json:"message_id"`
 			RcptTags      []string `json:"rcpt_tags"`
 			RoutingDomain string   `json:"routing_domain"`

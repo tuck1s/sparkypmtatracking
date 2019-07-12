@@ -86,6 +86,7 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 		eptr.ClickTracking = true
 		eptr.OpenTracking = true
 		eptr.FriendlyFrom = eptr.MsgFrom //TODO: really should be MsgFrom == Return-Path:
+		eptr.IPPool = "default"          //TODO: placeholder
 		// Marshal to string
 		s, err := json.Marshal(e)
 		Check(err)
