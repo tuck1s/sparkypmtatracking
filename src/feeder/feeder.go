@@ -81,7 +81,8 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 		eptr.GeoIP = fakeGeoIP()
 		eptr.EventID = uniqEventId()
 		eptr.InitialPixel = false
-		eptr.MessageID = trackingIDToMessageID(eStr, client)
+		// eptr.MessageID = trackingIDToMessageID(eStr, client)
+		eptr.MessageID = uniqMessageId()
 		eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
 		eptr.ClickTracking = true
 		eptr.OpenTracking = true
