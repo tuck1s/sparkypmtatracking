@@ -9,22 +9,9 @@ Open and click tracking modules for PMTA and SparkPost Signals:
 |`feeder`|Takes open & click events, correlates them and feeds them to the SparkPost Signals [Ingest API](https://developers.sparkpost.com/api/events-ingest/)|
 
 ## Pre-requisites
+- Git & Golang - installation tips [here](#installing-git-golang-on-your-host)
 - Redis - installation tips [here](#installing-redis-on-your-host)
-- Git
-- Golang
-
-Check you have `redis` installed and working. This project assumes it is available 
-on the default port `6379` on your host.
-
-```
-redis-cli --version
-```
-you should see `redis-cli 5.0.5` or similar
-```
-redis-cli PING
-```
-you should see `PONG`
-
+- nginx - installatin tips [here](#installing-and-configuring-nginx-proxy)
 
 Get this project with `git clone`, and dependencies with `go get`.
 
@@ -43,7 +30,6 @@ go get github.com/google/uuid
 ```
 
 Installation instructions follow, for each app.
-
 
 ## acct_etl
 Extracts, transforms and loads accounting data fed by [PMTA pipe](https://download.port25.com/files/UsersGuide.html#examples) 
@@ -136,12 +122,38 @@ It's usual to deploy a proxy such as `nginx` in front of this service.
 
 ## feeder
 
-The feeder task 
+The feeder task reads events from the Redis queue and feeds them to the
+SparkPost Ingest API.
+
+Check the local logfile output with `cat feeder.log`. The number of events, GZipped upload
+size, Ingest API response and Batch ID are logged.
+
+```
+2019/07/25 14:52:05 Uploaded 1 events 483 bytes (gzip), SparkPost Ingest response: 200 OK results.id= 6984b656-034e-40d8-89ab-f4dd33a41d49
+``` 
+
 ## wrapper
 
 TODO
 
+### Starting these applications on boot
+Script `start.sh` is provided for this purpose. You can make it run on boot using
+```
+crontab cronfile
+```
+or `crontab -e` then paste in cronfile contents.
+
+
 ---
+
+# Pre-requisites installation
+
+### Installing Git, Golang on your host
+Your package manager should install these for you, e.g.
+```
+sudo yum install git go
+``` 
+
 ### Installing Redis on your host
 
 Redis does not currently seem to be available via a package manager on EC2 Linux.
@@ -150,7 +162,8 @@ Follow the QuickStart guide [here](https://redis.io/topics/quickstart), followin
 and "Installing Redis more properly" steps. EC2 Linux does not have the
 update-rc.d command, use `sudo chkconfig redis_6379 on` instead.
 
-Here's the steps I followed:
+Here's the detailed steps. This project assumes port `6379` on your host.                           
+
 ```
 # Building
 wget http://download.redis.io/redis-stable.tar.gz
@@ -169,20 +182,21 @@ sudo vim /etc/redis/6379.conf
 
 sudo chkconfig redis_6379 on
 sudo /etc/init.d/redis_6379 start
-
-# test
-redis-cli ping
 ```
 
-# Appendix: additional configuration
-### Installing Git, Golang on your host
-Your package manager should install these for you, e.g.
+Check you now have `redis` installed and working.
 ```
-sudo yum install git go
-``` 
+redis-cli --version
+```
+you should see `redis-cli 5.0.5` or similar
+```
+redis-cli PING
+```
+you should see `PONG`
+
 
 ### Installing and configuring nginx proxy
-
+This provides protection for your application server.
 
 ```
 sudo yum install nginx
@@ -202,10 +216,3 @@ Ensure nginx starts on boot:
 ```
 sudo chkconfig nginx on
 ```
-
-### Starting these applications on boot
-Script `start.sh` is provided for this purpose. You can make it run on boot using
-```
-crontab cronfile
-```
-or `crontab -e` then paste in cronfile contents.
