@@ -1,0 +1,167 @@
+#
+# PMTA Config file for Signals on-prem demo
+#
+
+#
+# E-mail address for mailer's administrator (please specify!)
+#
+postmaster steve.tuck@sparkpost.com
+
+#
+# IP address(es) and port(s) on which to listen for incoming SMTP connections
+#
+smtp-listener 0.0.0.0:587
+
+smtp-listener 0.0.0.0:25
+
+#
+# Rewrite the MAIL FROM address to match the bounce domain
+#
+<rewrite-list mfrom>
+    mail-from *@pmta.signalsdemo.trymsys.net *@bounces.pmta.signalsdemo.trymsys.net
+</rewrite-list>
+
+#
+# One source rule for all injection, internal or external. Enforce auth, except for bounces and FBLs
+#
+<source 0/0>
+    log-connections false
+    log-commands    false       # WARNING: verbose! just for dev
+    log-data        false       # WARNING: even more verbose!
+    smtp-service    true        # allow SMTP service
+    smtp-max-auth-failure-rate 1/min
+    allow-unencrypted-plain-auth false
+    allow-starttls  true
+    rewrite-list    mfrom
+    # verp-default    true
+</source>
+
+<source {auth}>
+    always-allow-relaying yes   # only if the auth succeeds
+    default-virtual-mta default
+    process-x-job   true
+</source>
+
+#
+# Secure the inbound service with username, password and TLS. SMT 2019-05-31
+#
+smtp-server-tls-certificate /etc/pmta/pmtasignalsdemo.pem
+smtp-server-tls-allow-tlsv1.1 true
+smtp-server-tls-allow-tlsv1.2 true
+
+#
+# SMTP users (authenticated via SMTP AUTH)
+#
+<smtp-user SMTP_Injection>
+    password ## YOUR PASSWORD HERE ##
+    authentication-method password
+</smtp-user>
+
+# Introduce ourselves properly
+host-name pmta.signalsdemo.trymsys.net
+
+#
+# DKIM
+#
+domain-key mypmta, pmta.signalsdemo.trymsys.net,  /etc/pmta/mypmta.pmta.signalsdemo.trymsys.net.pem
+
+#
+# Enable Bounce and FBL processing on specific domains
+#
+relay-domain pmta.signalsdemo.trymsys.net
+relay-domain bounces.pmta.signalsdemo.trymsys.net
+relay-domain fbl.pmta.signalsdemo.trymsys.net
+
+<bounce-processor>
+    deliver-unmatched-email no
+    deliver-matched-email no
+<address-list>
+    domain pmta.signalsdemo.trymsys.net
+    domain bounces.pmta.signalsdemo.trymsys.net
+</address-list>
+</bounce-processor>
+
+<feedback-loop-processor>
+    deliver-unmatched-email no
+    deliver-matched-email no
+<address-list>
+    domain fbl.pmta.signalsdemo.trymsys.net
+</address-list>
+</feedback-loop-processor>
+
+#
+# SparkPost Signals
+#
+<signals>
+    api-key ## YOUR API KEY HERE ##
+    upload-url https://api.sparkpost.com/api/v1/ingest/events
+    log-verbose true
+    engagement-tracking true
+</signals>
+
+
+#
+# Route all outgoing traffic through this virtual mta / pool
+#
+<virtual-mta mta1>
+</virtual-mta>
+
+<virtual-mta-pool default>
+    virtual-mta mta1
+    <domain *>
+        max-smtp-out    20       # max. connections *per domain*
+        bounce-after    4d12h    # 4 days, 12 hours
+        retry-after     10m      # 10 minutes
+        dkim-sign       yes
+    </domain>
+</virtual-mta-pool>
+
+#
+# Port used for HTTP management interface
+#
+http-mgmt-port 8080
+
+#
+# IP addresses allowed to access the HTTP management interface, one
+# per line
+#
+http-access 127.0.0.1 monitor
+http-access ::1 monitor
+#http-access 10.1.0.10 none
+#http-access 10.1.0/24 admin
+
+#
+# Whether to run the PowerMTA deamon as root
+#
+run-as-root no
+
+#
+# Logging file name
+#
+log-file /var/log/pmta/pmta.log   # logrotate is used for rotation
+
+#
+# Accounting file(s)
+#
+<acct-file /var/log/pmta/acct.csv>
+#    move-to /opt/myapp/pmta-acct   # configure as fit for your application
+    records d,b,f,rb
+    move-interval 5m
+    max-size 50M
+    delete-after 8d
+</acct-file>
+
+# Pipe into engagement tracking correlator. Expects a custom header in the injected mail also.
+<acct-file |/usr/local/bin/acct_etl>
+    records d
+    record-fields d orig,rcpt,header_x-sp-message-id,header_x-tracking-id
+</acct-file>
+
+#
+# Spool directories
+#
+<spool /var/spool/pmta>
+    deliver-only no
+</spool>
+
+# EOF
