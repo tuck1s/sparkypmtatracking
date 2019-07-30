@@ -97,13 +97,18 @@ relay-domain fbl.pmta.signalsdemo.trymsys.net
     upload-url https://api.sparkpost.com/api/v1/ingest/events
     log-verbose true
     engagement-tracking true
+    min-free-space 1G
 </signals>
 
+enable-signals true
 
 #
-# Route all outgoing traffic through this virtual mta / pool
+# Route all outgoing traffic through this virtual mta / pool.
+# Declare the delivery IP address here, so that SparkPost signals ingest injection (aka "reception") events
+# will carry the correct sending_IP attribute
 #
 <virtual-mta mta1>
+    smtp-source-host 172.31.25.101 pmta.signalsdemo.trymsys.net
 </virtual-mta>
 
 <virtual-mta-pool default>
