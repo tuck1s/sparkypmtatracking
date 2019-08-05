@@ -37,8 +37,23 @@ func HostCleanup(host string) string {
 	return host
 }
 
+// Find an element within an array slice
+func PositionIn(arr []string, val string) (int, bool) {
+	for i, v := range arr {
+		if v == val {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// Name of the queue between tracker and feeder tasks
 const RedisQueue = "trk_queue"
 
+// Key that holds the PowerMTA accounting file headers
+const RedisAcctHeaders = "acct_headers"
+
+// SparkPost geographical mapping of IP address
 type GeoIP struct {
 	Country    string
 	Region     string
