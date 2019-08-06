@@ -156,10 +156,10 @@ log-file /var/log/pmta/pmta.log   # logrotate is used for rotation
     delete-after 8d
 </acct-file>
 
-# Pipe into engagement tracking correlator. Expects a custom header in the injected mail also.
+# Pipe into our acct_etl process
 <acct-file |/usr/local/bin/acct_etl>
     records d
-    record-fields d orig,rcpt,header_x-sp-message-id,header_x-tracking-id
+    record-fields d orig,rcpt,header_x-sp-message-id,jobId,dlvSourceIp,vmta,header_Subject
 </acct-file>
 
 #
