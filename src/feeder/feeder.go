@@ -11,7 +11,6 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -64,7 +63,7 @@ func trackingIDToMessageID(eStr string, client *redis.Client) string {
 
 // For efficiency under load, collect n events into a batch
 const ingestBatchSize = 1000
-const ingestMaxWait = 60 * time.Second
+const ingestMaxWait = 10 * time.Second
 
 // Prepare a batch of TrackingEvents for ingest to SparkPost.
 // Because the JSON declarations coincide, we can unmarshal a TrackingEvent into the leaf part of a SparkPostEvent
@@ -78,16 +77,16 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 		Check(err)
 		// Fill in some fields with default values
 		eptr.DelvMethod = "esmtp"
-		eptr.GeoIP = fakeGeoIP()
+		//eptr.GeoIP = fakeGeoIP()
 		eptr.EventID = uniqEventId()
-		eptr.InitialPixel = false
+		//eptr.InitialPixel = false
 		// eptr.MessageID = trackingIDToMessageID(eStr, client)
 		eptr.MessageID = uniqMessageId()
 		eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
-		eptr.ClickTracking = true
-		eptr.OpenTracking = true
-		eptr.FriendlyFrom = eptr.MsgFrom //TODO: really should be MsgFrom == Return-Path:
-		eptr.IPPool = "default"          //TODO: placeholder
+		//eptr.ClickTracking = true
+		//eptr.OpenTracking = true
+		//eptr.FriendlyFrom = eptr.MsgFrom //TODO: really should be MsgFrom == Return-Path:
+		eptr.IPPool = "default" //TODO: placeholder
 		// Marshal to string
 		s, err := json.Marshal(e)
 		Check(err)
@@ -132,17 +131,8 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 
 func main() {
 	// Use logging, as this program will be executed without an attached console
-	logfile, err := os.OpenFile("feeder.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	Check(err)
-	log.SetOutput(logfile)
-
-	// Prepare to pop records from Redis. Assume server is on the standard port
-	client := redis.NewClient(&redis.Options{
-		Addr:     ":6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
-
+	MyLogger("feeder.log")
+	client := MyRedis()
 	// Get SparkPost ingest credentials from env vars
 	host := HostCleanup(GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
 	apiKey := GetenvDefault("SPARKPOST_API_KEY_INGEST", "")

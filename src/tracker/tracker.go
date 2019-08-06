@@ -5,12 +5,10 @@ import (
 	"compress/zlib"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/go-redis/redis"
 	. "github.com/sparkyPmtaTracking/src/common"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -62,12 +60,7 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 	}
 	log.Println(e)
 
-	// Prepare to load a record into Redis. Assume server is on the standard port
-	client := redis.NewClient(&redis.Options{
-		Addr:     ":6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
+	client := MyRedis()
 	_, err = client.RPush(RedisQueue, eBytes).Result()
 	if err != nil {
 		log.Println("Redis error", err)
@@ -108,14 +101,11 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 
 func main() {
 	// Use logging, as this program will be executed without an attached console
-	logfile, err := os.OpenFile("tracker.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	Check(err)
-	log.SetOutput(logfile)
-
+	MyLogger("tracker.log")
 	http.HandleFunc("/tracking/", TrackingServer) // Accept subtree matches
 	server := &http.Server{
 		Addr: ":8888",
 	}
-	err = server.ListenAndServe()
+	err := server.ListenAndServe()
 	Check(err)
 }

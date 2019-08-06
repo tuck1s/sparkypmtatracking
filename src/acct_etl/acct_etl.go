@@ -88,14 +88,10 @@ func storeEvent(r []string, client *redis.Client) {
 }
 
 func main() {
+	MyLogger("acct_etl.log")
 	flag.Parse()
 	var f *os.File
-
-	// Use logging, as this program will be executed without an attached console
-	logfile, err := os.OpenFile("acct_etl.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	Check(err)
-	log.SetOutput(logfile)
-
+	var err error
 	// Check if input file specified on command-line args, or using stdin
 	switch flag.NArg() {
 	case 0:
@@ -108,13 +104,7 @@ func main() {
 	}
 	inbuf := bufio.NewReader(f)
 
-	// Prepare to load records into Redis. Assume server is on the standard port
-	client := redis.NewClient(&redis.Options{
-		Addr:     ":6379",
-		Password: "", // no password set
-		DB:       0,  // use default DB
-	})
-
+	client := MyRedis()
 	input := csv.NewScanner(inbuf)
 	for input.Scan() {
 		r := input.Record()
