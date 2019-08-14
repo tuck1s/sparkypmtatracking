@@ -2,3 +2,4 @@ setenvs.sh
 .idea/*
 *.log
 /etc/pmta/config
+.vscode/*
