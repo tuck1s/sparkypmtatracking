@@ -27,6 +27,7 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 	var e TrackEvent
 	e.Type = s[1]                 // add the event type in from the path
 	e.UserAgent = req.UserAgent() // add user agent
+	e.IPAddress = strings.Split(req.RemoteAddr, ":")[0]
 	t := time.Now().Unix()        // add timestamp
 	e.TimeStamp = strconv.FormatInt(t, 10)
 	if e.Type != "open" && e.Type != "click" {

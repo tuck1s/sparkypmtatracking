@@ -46,51 +46,65 @@ func uniqMessageId() string {
 	return strings.ToUpper(h)
 }
 
-// Map our own tracking ID to the SparkPost Message ID via Redis - if found
-func trackingIDToMessageID(eStr string, client *redis.Client) string {
-	var t TrackEvent
-	err := json.Unmarshal([]byte(eStr), &t)
-	Check(err)
-	//t.TrackingID = "a5a1050437e345389bc2c7d6d79743f5"			//TODO: debug
-	trkID := "trk_" + t.TrackingID
-	msgID, err := client.Get(trkID).Result()
-	if err == redis.Nil {
-		log.Println("Tracking ID", trkID, "not found - using a generated unique message_id")
-		msgID = uniqMessageId()
-	}
-	return msgID
-}
-
 // For efficiency under load, collect n events into a batch
 const ingestBatchSize = 1000
 const ingestMaxWait = 10 * time.Second
 
+func makeSparkPostEvent(eStr string, client *redis.Client) SparkPostEvent {
+	var tev TrackEvent
+	err := json.Unmarshal([]byte(eStr), &tev)
+	Check(err)
+	var spEvent SparkPostEvent
+	// Shortcut pointer to the attribute-carrying leaf object; fill in received attributes
+	eptr := &spEvent.EventWrapper.EventGrouping
+	eptr.Type = tev.Type
+	eptr.TargetLinkUrl = tev.TargetLinkUrl
+	eptr.MessageID = tev.MessageID
+	eptr.TimeStamp = tev.TimeStamp
+	eptr.UserAgent = tev.UserAgent
+	eptr.IPAddress = tev.IPAddress
+
+	// Enrich with PowerMTA accounting-pipe values, if we have these, from persistent storage
+	tKey := TrackingPrefix + tev.MessageID
+	enrichmentJSON, err := client.Get(tKey).Result()
+	if err == redis.Nil {
+		Console_and_log_fatal("Error: redis key", tKey, "not found")
+	}
+	enrichment := make(map[string]string)
+	err = json.Unmarshal([]byte(enrichmentJSON), &enrichment)
+	Check(err)
+	eptr.MsgFrom = enrichment["orig"]
+	eptr.RcptTo = enrichment["rcpt"]
+	eptr.CampaignID = enrichment["jobId"]
+	eptr.SendingIP = enrichment["dlvSourceIp"]
+	eptr.IPPool = enrichment["vmtaPool"]
+
+	// Fill in these fields with default / unique / derived values
+	eptr.DelvMethod = "esmtp"
+	eptr.EventID = uniqEventId()
+	eptr.InitialPixel = false
+	eptr.ClickTracking = true
+	eptr.OpenTracking = true
+	eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
+
+	// Skip these fields for now; you may have information to populate them from your own sources
+	//eptr.GeoIP
+	//eptr.FriendlyFrom
+	//eptr.RcptTags
+	//eptr.RcptMeta
+	//eptr.Subject			.. SparkPost doesn't fill this in on Open & Click events
+	return spEvent
+}
+
 // Prepare a batch of TrackingEvents for ingest to SparkPost.
-// Because the JSON declarations coincide, we can unmarshal a TrackingEvent into the leaf part of a SparkPostEvent
 func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey string) {
 	var ingestData bytes.Buffer
 	ingestData.Grow(1024 * len(batch)) // Preallocate approx size of the string for efficiency
 	for _, eStr := range batch {
-		var e SparkPostEvent
-		eptr := &e.EventWrapper.EventGrouping
-		err := json.Unmarshal([]byte(eStr), eptr)
+		e := makeSparkPostEvent(eStr, client)
+		eJSON, err := json.Marshal(e)
 		Check(err)
-		// Fill in some fields with default values
-		eptr.DelvMethod = "esmtp"
-		//eptr.GeoIP = fakeGeoIP()
-		eptr.EventID = uniqEventId()
-		//eptr.InitialPixel = false
-		// eptr.MessageID = trackingIDToMessageID(eStr, client)
-		eptr.MessageID = uniqMessageId()
-		eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
-		//eptr.ClickTracking = true
-		//eptr.OpenTracking = true
-		//eptr.FriendlyFrom = eptr.MsgFrom //TODO: really should be MsgFrom == Return-Path:
-		eptr.IPPool = "default" //TODO: placeholder
-		// Marshal to string
-		s, err := json.Marshal(e)
-		Check(err)
-		ingestData.Write(s)
+		ingestData.Write(eJSON)
 		ingestData.WriteString("\n")
 	}
 

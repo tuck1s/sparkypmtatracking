@@ -62,9 +62,10 @@ func PositionIn(arr []string, val string) (int, bool) {
 }
 
 // -------------------------------------------------------------------------------------------------------------------
-// Redis access
+// Redis
 const RedisQueue = "trk_queue"          // Name of the queue between tracker and feeder tasks
 const RedisAcctHeaders = "acct_headers" // Key that holds the PowerMTA accounting file headers
+const TrackingPrefix = "msgID_"			// Keys beginning with this prefix hold enrichment data
 
 // return a client handle for Redis. Assume server is on the standard port
 func MyRedis() (client *redis.Client) {
@@ -77,16 +78,12 @@ func MyRedis() (client *redis.Client) {
 
 // Tracking event data passed in this project's tracking URLs (and in the Redis event queue)
 type TrackEvent struct {
-	Type          string   `json:"type"` // added from the URL literal path
-	CampaignID    string   `json:"campaign_id"`
-	RcptTo        string   `json:"rcpt_to"`
-	MsgFrom       string   `json:"msg_from"`
-	RcptMeta      struct{} `json:"rcpt_meta"`
-	Subject       string   `json:"subject"`
-	TimeStamp     string   `json:"timestamp"` // Added by tracker
-	TargetLinkUrl string   `json:"target_link_url"`
-	TrackingID    string   `json:"tracking_id"`
-	UserAgent     string   `json:"user_agent"` // Added by tracker
+	Type          string `json:"type"` // added from the URL literal path
+	TargetLinkUrl string `json:"target_link_url"`
+	MessageID     string `json:"x_sp_message_id"`
+	TimeStamp     string `json:"timestamp"`
+	UserAgent     string `json:"user_agent"`
+	IPAddress     string `json:"ip_address"`
 }
 
 // -------------------------------------------------------------------------------------------------------------------
@@ -103,6 +100,7 @@ type SparkPostEvent struct {
 			DelvMethod    string   `json:"delv_method"`
 			EventID       string   `json:"event_id"`
 			FriendlyFrom  string   `json:"friendly_from"`
+			IPAddress     string   `json:"ip_address"`
 			GeoIP         GeoIP    `json:"geo_ip"`
 			InitialPixel  bool     `json:"initial_pixel"`
 			IPPool        string   `json:"ip_pool"`
@@ -113,6 +111,7 @@ type SparkPostEvent struct {
 			OpenTracking  bool     `json:"open_tracking"`
 			MsgFrom       string   `json:"msg_from"`
 			RcptMeta      struct{} `json:"rcpt_meta"`
+			SendingIP	  string   `json:"sending_ip"`
 			Subject       string   `json:"subject"`
 			TimeStamp     string   `json:"timestamp"`
 			TargetLinkUrl string   `json:"target_link_url"`

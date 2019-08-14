@@ -27,7 +27,7 @@ var requiredAcctFields = []string{
 	typeField, msgIDField,
 }
 var optionalAcctFields = []string{
-	"orig", "rcpt", "jobId", "dlvSourceIp", "vmta", "header_Subject",
+	"orig", "rcpt", "jobId", "dlvSourceIp", "vmtaPool",
 }
 
 // Acccounting header record sent at PowerMTA start, check for required and optional fields.
@@ -71,7 +71,7 @@ func storeEvent(r []string, client *redis.Client) {
 	if msgID_i, ok := hdrs[msgIDField]; !ok {
 		Console_and_log_fatal("Error: redis key", RedisAcctHeaders, "does not contain mapping for header_x-sp-message-id")
 	} else {
-		msgIDKey := "msgID_" + r[msgID_i]
+		msgIDKey := TrackingPrefix + r[msgID_i]
 		enrichment := make(map[string]string)
 		for k, i := range hdrs {
 			if k != msgIDField && k != typeField {
