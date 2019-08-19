@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	. "github.com/sparkyPmtaTracking/src/common"
+	c "github.com/sparkyPmtaTracking/src/common"
 
 	"github.com/go-redis/redis"
 	"github.com/smartystreets/scanners/csv"
@@ -36,42 +36,42 @@ func storeHeaders(r []string, client *redis.Client) {
 	log.Println("PMTA accounting headers from pipe ", r)
 	hdrs := make(map[string]int)
 	for _, f := range requiredAcctFields {
-		fpos, found := PositionIn(r, f)
+		fpos, found := c.PositionIn(r, f)
 		if found {
 			hdrs[f] = fpos
 		} else {
-			Console_and_log_fatal("Required field", f, "is not present in PMTA accounting headers")
+			c.Console_and_log_fatal("Required field", f, "is not present in PMTA accounting headers")
 		}
 	}
 	// Pick up positions of optional fields, for event enrichment
 	for _, f := range optionalAcctFields {
-		fpos, found := PositionIn(r, f)
+		fpos, found := c.PositionIn(r, f)
 		if found {
 			hdrs[f] = fpos
 		}
 	}
 	hdrsJSON, err := json.Marshal(hdrs)
-	Check(err)
-	_, err = client.Set(RedisAcctHeaders, hdrsJSON, 0).Result()
-	Check(err)
-	log.Println("Loaded", RedisAcctHeaders, "->", string(hdrsJSON), "into Redis")
+	c.Check(err)
+	_, err = client.Set(c.RedisAcctHeaders, hdrsJSON, 0).Result()
+	c.Check(err)
+	log.Println("Loaded", c.RedisAcctHeaders, "->", string(hdrsJSON), "into Redis")
 
 }
 
 // Store a single accounting event r into redis, based on previously seen header format
 func storeEvent(r []string, client *redis.Client) {
-	hdrsJ, err := client.Get(RedisAcctHeaders).Result()
+	hdrsJ, err := client.Get(c.RedisAcctHeaders).Result()
 	if err == redis.Nil {
-		Console_and_log_fatal("Error: redis key", RedisAcctHeaders, "not found")
+		c.Console_and_log_fatal("Error: redis key", c.RedisAcctHeaders, "not found")
 	}
 	hdrs := make(map[string]int)
 	err = json.Unmarshal([]byte(hdrsJ), &hdrs)
-	Check(err)
+	c.Check(err)
 	// read fields from r into a message_id-specific redis key that will enable the feeder to enrich engagement events
-	if msgID_i, ok := hdrs[msgIDField]; !ok {
-		Console_and_log_fatal("Error: redis key", RedisAcctHeaders, "does not contain mapping for header_x-sp-message-id")
+	if msgIDindex, ok := hdrs[msgIDField]; !ok {
+		c.Console_and_log_fatal("Error: redis key", c.RedisAcctHeaders, "does not contain mapping for header_x-sp-message-id")
 	} else {
-		msgIDKey := TrackingPrefix + r[msgID_i]
+		msgIDKey := c.TrackingPrefix + r[msgIDindex]
 		enrichment := make(map[string]string)
 		for k, i := range hdrs {
 			if k != msgIDField && k != typeField {
@@ -80,15 +80,15 @@ func storeEvent(r []string, client *redis.Client) {
 		}
 		// Set key message_id in Redis
 		enrichmentJSON, err := json.Marshal(enrichment)
-		Check(err)
+		c.Check(err)
 		_, err = client.Set(msgIDKey, enrichmentJSON, ttl).Result()
-		Check(err)
+		c.Check(err)
 		log.Println("Loaded", msgIDKey, "->", string(enrichmentJSON), "into Redis")
 	}
 }
 
 func main() {
-	MyLogger("acct_etl.log")
+	c.MyLogger("acct_etl.log")
 	flag.Parse()
 	var f *os.File
 	var err error
@@ -98,13 +98,13 @@ func main() {
 		f = os.Stdin
 	case 1:
 		f, err = os.Open(flag.Arg(0))
-		Check(err)
+		c.Check(err)
 	default:
-		Console_and_log_fatal("Command line args: input must be from stdin or file")
+		c.Console_and_log_fatal("Command line args: input must be from stdin or file")
 	}
 	inbuf := bufio.NewReader(f)
 
-	client := MyRedis()
+	client := c.MyRedis()
 	input := csv.NewScanner(inbuf)
 	for input.Scan() {
 		r := input.Record()
@@ -114,7 +114,7 @@ func main() {
 		case typeField:
 			storeHeaders(r, client)
 		default:
-			Console_and_log_fatal("Accounting record not of type d:", r)
+			c.Console_and_log_fatal("Accounting record not of type d:", r)
 		}
 	}
 }

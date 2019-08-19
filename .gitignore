@@ -3,3 +3,4 @@ setenvs.sh
 *.log
 /etc/pmta/config
 .vscode/*
+src/acct_etl/__debug_bin
