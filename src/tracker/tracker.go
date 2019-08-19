@@ -73,10 +73,6 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 
 	// Emulate response that SparkPost gives on GET opens, clicks and OPTIONS method. Change as required
 	w.Header().Set("Server", "msys-http")
-	w.Header().Set("X-Robots-Tag", "noindex")
-
-	// Special value expected by Bouncy Sink. Not needed for production applications
-	w.Header().Set("X-MSYS", "Signals SMTP Traffic Generator Tracking Endpoint")
 	switch req.Method {
 	case "GET":
 		switch e.Type {
