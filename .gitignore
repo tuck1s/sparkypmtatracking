@@ -4,3 +4,6 @@ setenvs.sh
 /etc/pmta/config
 .vscode/*
 src/acct_etl/__debug_bin
+src/tracker/__debug_bin
+src/feeder/__debug_bin
+src/wrapper/__debug_bin

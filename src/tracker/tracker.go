@@ -5,16 +5,18 @@ import (
 	"compress/zlib"
 	"encoding/base64"
 	"encoding/json"
-	. "github.com/sparkyPmtaTracking/src/common"
 	"io/ioutil"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	c "github.com/sparkyPmtaTracking/src/common"
 )
 
-func TrackingServer(w http.ResponseWriter, req *http.Request) {
+func trackingServer(w http.ResponseWriter, req *http.Request) {
 	// Expects URL paths of the form /tracking/open/xyzzy and /tracking/click/xyzzy
 	// where xyzzy = base64 urlsafe encoded, Zlib compressed, []byte
 	// These are written to the Redis queue
@@ -24,11 +26,11 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	var e TrackEvent
+	var e c.TrackEvent
 	e.Type = s[1]                 // add the event type in from the path
 	e.UserAgent = req.UserAgent() // add user agent
-	e.IPAddress = strings.Split(req.RemoteAddr, ":")[0]
-	t := time.Now().Unix()        // add timestamp
+	e.IPAddress, _, _ = net.SplitHostPort(req.RemoteAddr)
+	t := time.Now().Unix() // add timestamp
 	e.TimeStamp = strconv.FormatInt(t, 10)
 	if e.Type != "open" && e.Type != "click" {
 		w.WriteHeader(http.StatusBadRequest)
@@ -61,8 +63,8 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 	}
 	log.Println(e)
 
-	client := MyRedis()
-	_, err = client.RPush(RedisQueue, eBytes).Result()
+	client := c.MyRedis()
+	_, err = client.RPush(c.RedisQueue, eBytes).Result()
 	if err != nil {
 		log.Println("Redis error", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -102,11 +104,11 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 
 func main() {
 	// Use logging, as this program will be executed without an attached console
-	MyLogger("tracker.log")
-	http.HandleFunc("/tracking/", TrackingServer) // Accept subtree matches
+	c.MyLogger("tracker.log")
+	http.HandleFunc("/tracking/", trackingServer) // Accept subtree matches
 	server := &http.Server{
 		Addr: ":8888",
 	}
 	err := server.ListenAndServe()
-	Check(err)
+	c.Check(err)
 }

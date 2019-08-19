@@ -55,7 +55,6 @@ func storeHeaders(r []string, client *redis.Client) {
 	_, err = client.Set(c.RedisAcctHeaders, hdrsJSON, 0).Result()
 	c.Check(err)
 	log.Println("Loaded", c.RedisAcctHeaders, "->", string(hdrsJSON), "into Redis")
-
 }
 
 // Store a single accounting event r into redis, based on previously seen header format

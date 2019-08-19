@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
-	. "github.com/sparkyPmtaTracking/src/common"
 	"io"
 	"log"
 	"net/http"
@@ -15,13 +14,15 @@ import (
 	"strings"
 	"time"
 
+	c "github.com/sparkyPmtaTracking/src/common"
+
 	"github.com/go-redis/redis"
 	"github.com/google/uuid"
 )
 
 // Make a fake GeoIP
-func fakeGeoIP() GeoIP {
-	return GeoIP{
+func fakeGeoIP() c.GeoIP {
+	return c.GeoIP{
 		Country:    "US",
 		Region:     "MD",
 		City:       "Columbia",
@@ -33,14 +34,14 @@ func fakeGeoIP() GeoIP {
 }
 
 // Make a SparkPost formatted unique event_id, which needs to be a decimal string 0 .. (2^63-1)
-func uniqEventId() string {
+func uniqEventID() string {
 	u := uuid.New()
 	num := binary.LittleEndian.Uint64(u[:8]) & 0x7fffffffffffffff
 	return strconv.FormatUint(num, 10)
 }
 
 // Make a SparkPost formatted unique message_id, which needs to be a hex string
-func uniqMessageId() string {
+func uniqMessageID() string {
 	u := uuid.New()
 	h := hex.EncodeToString(u[:12])
 	return strings.ToUpper(h)
@@ -50,11 +51,11 @@ func uniqMessageId() string {
 const ingestBatchSize = 1000
 const ingestMaxWait = 10 * time.Second
 
-func makeSparkPostEvent(eStr string, client *redis.Client) SparkPostEvent {
-	var tev TrackEvent
+func makeSparkPostEvent(eStr string, client *redis.Client) c.SparkPostEvent {
+	var tev c.TrackEvent
 	err := json.Unmarshal([]byte(eStr), &tev)
-	Check(err)
-	var spEvent SparkPostEvent
+	c.Check(err)
+	var spEvent c.SparkPostEvent
 	// Shortcut pointer to the attribute-carrying leaf object; fill in received attributes
 	eptr := &spEvent.EventWrapper.EventGrouping
 	eptr.Type = tev.Type
@@ -65,14 +66,14 @@ func makeSparkPostEvent(eStr string, client *redis.Client) SparkPostEvent {
 	eptr.IPAddress = tev.IPAddress
 
 	// Enrich with PowerMTA accounting-pipe values, if we have these, from persistent storage
-	tKey := TrackingPrefix + tev.MessageID
+	tKey := c.TrackingPrefix + tev.MessageID
 	enrichmentJSON, err := client.Get(tKey).Result()
 	if err == redis.Nil {
-		Console_and_log_fatal("Error: redis key", tKey, "not found")
+		c.Console_and_log_fatal("Error: redis key", tKey, "not found")
 	}
 	enrichment := make(map[string]string)
 	err = json.Unmarshal([]byte(enrichmentJSON), &enrichment)
-	Check(err)
+	c.Check(err)
 	eptr.MsgFrom = enrichment["orig"]
 	eptr.RcptTo = enrichment["rcpt"]
 	eptr.CampaignID = enrichment["jobId"]
@@ -81,7 +82,7 @@ func makeSparkPostEvent(eStr string, client *redis.Client) SparkPostEvent {
 
 	// Fill in these fields with default / unique / derived values
 	eptr.DelvMethod = "esmtp"
-	eptr.EventID = uniqEventId()
+	eptr.EventID = uniqEventID()
 	eptr.InitialPixel = false
 	eptr.ClickTracking = true
 	eptr.OpenTracking = true
@@ -103,7 +104,7 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	for _, eStr := range batch {
 		e := makeSparkPostEvent(eStr, client)
 		eJSON, err := json.Marshal(e)
-		Check(err)
+		c.Check(err)
 		ingestData.Write(eJSON)
 		ingestData.WriteString("\n")
 	}
@@ -113,9 +114,9 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	ir := bufio.NewReader(&ingestData)
 	zw := gzip.NewWriter(&zbuf)
 	_, err := io.Copy(zw, ir)
-	Check(err)
+	c.Check(err)
 	err = zw.Close() // ensure all data written (seems to be necessary)
-	Check(err)
+	c.Check(err)
 	gzipSize := zbuf.Len()
 
 	// Prepare the https POST request
@@ -125,39 +126,39 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	}
 	url := host + "/api/v1/ingest/events"
 	req, err := http.NewRequest("POST", url, zr)
-	Check(err)
+	c.Check(err)
 	req.Header = map[string][]string{
 		"Authorization":    {apiKey},
 		"Content-Type":     {"application/x-ndjson"},
 		"Content-Encoding": {"gzip"},
 	}
 	res, err := netClient.Do(req)
-	Check(err)
+	c.Check(err)
 
-	var resObj IngestResult
+	var resObj c.IngestResult
 	respRd := json.NewDecoder(res.Body)
 	err = respRd.Decode(&resObj)
-	Check(err)
+	c.Check(err)
 	log.Println("Uploaded", len(batch), "events", gzipSize, "bytes (gzip), SparkPost Ingest response:", res.Status, "results.id=", resObj.Results.Id)
 	err = res.Body.Close()
-	Check(err)
+	c.Check(err)
 }
 
 func main() {
 	// Use logging, as this program will be executed without an attached console
-	MyLogger("feeder.log")
-	client := MyRedis()
+	c.MyLogger("feeder.log")
+	client := c.MyRedis()
 	// Get SparkPost ingest credentials from env vars
-	host := HostCleanup(GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
-	apiKey := GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
+	host := c.HostCleanup(c.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
+	apiKey := c.GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
 	if apiKey == "" {
-		Console_and_log_fatal("SPARKPOST_API_KEY_INGEST not set - stopping")
+		c.Console_and_log_fatal("SPARKPOST_API_KEY_INGEST not set - stopping")
 	}
 
 	// Process forever data arriving via Redis queue
 	trackingData := make([]string, 0, ingestBatchSize) // Pre-allocate for efficiency
 	for {
-		d, err := client.LPop(RedisQueue).Result()
+		d, err := client.LPop(c.RedisQueue).Result()
 		if err == redis.Nil {
 			// special value means queue is empty. Ingest any data we have collected, then wait a while
 			if len(trackingData) > 0 {
