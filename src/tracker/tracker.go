@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	c "github.com/sparkyPmtaTracking/src/common"
+	c "github.com/tuck1s/sparkyPmtaTracking/src/common"
 )
 
 func trackingServer(w http.ResponseWriter, req *http.Request) {
