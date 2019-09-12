@@ -1,4 +1,4 @@
-package sparkyPMTATracking
+package sparkypmtatracking
 
 import (
 	"fmt"

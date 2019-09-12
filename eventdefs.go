@@ -1,4 +1,4 @@
-package sparkyPMTATracking
+package sparkypmtatracking
 
 // Tracking event data passed in this project's tracking URLs (and in the Redis event queue)
 type TrackEvent struct {

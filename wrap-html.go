@@ -1,4 +1,4 @@
-package sparkyPMTATracking
+package sparkypmtatracking
 
 import (
 	"bytes"
@@ -6,7 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"io"
+	"net/url"
+	"path"
 
 	"github.com/google/uuid"
 	"golang.org/x/net/html"
@@ -30,17 +33,28 @@ type TrackingData struct {
 
 // Tracker can have different URLs for the different tracking actions if desired
 type Tracker struct {
-	URL       string
+	URL       url.URL
 	messageID string // This info is set up per message
 	rcptTo    string // and per recipient
 }
 
 // NewTracker returns a tracker with the persistent info set up from params
-func NewTracker(URL string) *Tracker {
-	trk := Tracker{
-		URL: URL,
+func NewTracker(URL string) (*Tracker, error) {
+	u, err := url.ParseRequestURI(URL)
+	if err != nil {
+		return nil, err
 	}
-	return &trk
+	if u.RawQuery != "" {
+		return nil, errors.New("Can't have query parameters in the tracking URL")
+	}
+	if u.Fragment != "" {
+		return nil, errors.New("Can't have # fragments in the tracking URL")
+	}
+	// Valid - recompose into a canonical form URL, with trailing /
+	trk := Tracker{
+		URL: *u,
+	}
+	return &trk, nil
 }
 
 // MessageInfo sets the per-message specifics
@@ -52,7 +66,7 @@ func (trk *Tracker) MessageInfo(msgID, rcpt string) {
 // InitialOpenPixel returns an html fragment with pixel for initial open tracking.
 // If there are problems, empty string is returned.
 func (trk *Tracker) InitialOpenPixel() string {
-	if trk.URL == "" {
+	if trk.URL.String() == "" {
 		return ""
 	}
 	s1 := `<div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px` +
@@ -64,7 +78,7 @@ func (trk *Tracker) InitialOpenPixel() string {
 // OpenPixel returns an html fragment with pixel for bottom open tracking.
 // If there are problems, empty string is returned.
 func (trk *Tracker) OpenPixel() string {
-	if trk.URL == "" {
+	if trk.URL.String() == "" {
 		return ""
 	}
 	s1 := `<img border="0" width="1" height="1" alt="" src="`
@@ -75,16 +89,16 @@ func (trk *Tracker) OpenPixel() string {
 // WrapURL returns the wrapped, encoded version of the URL for engagement tracking.
 // If there are problems, the original unwrapped url is returned.
 func (trk *Tracker) WrapURL(url string) string {
-	if trk.URL == "" {
+	if trk.URL.String() == "" {
 		return url
 	}
 	return trk.wrap("c", url)
 }
 
-func (trk *Tracker) wrap(action, url string) string {
-	path, err := json.Marshal(TrackingData{
+func (trk *Tracker) wrap(action, targetlink string) string {
+	pathData, err := json.Marshal(TrackingData{
 		Action:        action,
-		TargetLinkURL: url,
+		TargetLinkURL: targetlink,
 		MessageID:     trk.messageID,
 		RcptTo:        trk.rcptTo,
 	})
@@ -95,13 +109,19 @@ func (trk *Tracker) wrap(action, url string) string {
 	var b64Z bytes.Buffer
 	b64w := base64.NewEncoder(base64.URLEncoding, &b64Z)
 	zw := zlib.NewWriter(b64w)
-	if _, err = zw.Write(path); err != nil {
+	if _, err = zw.Write(pathData); err != nil {
 		return ""
 	}
 	if err = zw.Close(); err != nil {
 		return ""
 	}
-	return trk.URL + b64Z.String()
+	pj := path.Join(trk.URL.Path, b64Z.String())
+	u := url.URL{ // make a local copy so we don't change the parent
+		Scheme: trk.URL.Scheme,
+		Host:   trk.URL.Host,
+		Path:   pj,
+	}
+	return u.String()
 }
 
 // TrackHTML streams html content from r to w, adding engagement tracking
