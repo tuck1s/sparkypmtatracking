@@ -3,8 +3,8 @@ setenvs.sh
 *.log
 /etc/pmta/config
 .vscode/*
-src/acct_etl/__debug_bin
-src/tracker/__debug_bin
-src/feeder/__debug_bin
-src/wrapper/__debug_bin
+cmd/acct_etl/__debug_bin
+cmd/tracker/__debug_bin
+cmd/feeder/__debug_bin
+cmd/wrapper/__debug_bin
 .DS_Store
