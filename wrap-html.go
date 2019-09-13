@@ -47,9 +47,6 @@ func NewTracker(URL string) (*Tracker, error) {
 	if u.RawQuery != "" {
 		return nil, errors.New("Can't have query parameters in the tracking URL")
 	}
-	if u.Fragment != "" {
-		return nil, errors.New("Can't have # fragments in the tracking URL")
-	}
 	// Valid - recompose into a canonical form URL, with trailing /
 	trk := Tracker{
 		URL: *u,

@@ -24,7 +24,6 @@ const testHTML = `<!DOCTYPE html>
 </body>
 </html>
 `
-
 const testMessageID = "0000123456789abcdef0"
 const testRecipient = "recipient@example.com"
 const testTrackingDomain = "http://tracking.example.com"
@@ -116,10 +115,62 @@ func TestTrackHTML(t *testing.T) {
 	}
 	myTracker.MessageInfo(testMessageID, testRecipient)
 	ioHarness(testHTML, expectedHTMLoutputLongPath, myTracker.TrackHTML, t)
+}
 
+func TestTrackHTMLfaultyInputs(t *testing.T) {
+	// With uninitialised tracker, pixels should return empty string
+	myTracker := trk.Tracker{}
+	s := myTracker.InitialOpenPixel()
+	if s != "" {
+		t.Errorf("Expecting empty result from InitialOpenPixel, got %s", s)
+	}
+
+	s = myTracker.OpenPixel()
+	if s != "" {
+		t.Errorf("Expecting empty result from InitialOpenPixel, got %s", s)
+	}
+
+	// With uninitialised tracker, wrapURL should return value identical to input
+	u := "https://xyzzy.org/foo/bar/?pet=pig"
+	s = myTracker.WrapURL(u)
+	if s != u {
+		t.Errorf("Expecting empty result from InitialOpenPixel, got %s", s)
+	}
+}
+
+func TestNewTracker(t *testing.T) {
 	// faulty inputs: malformed URLs are rejected
-	_, err = trk.NewTracker("httttps://not a url")
+	_, err := trk.NewTracker("httttps://not a url")
 	if err == nil {
 		t.Errorf("Faulty input test should have failed")
 	}
+
+	_, err = trk.NewTracker("https://example.com/?pet=dog")
+	if err == nil {
+		t.Errorf("Faulty input test should have failed")
+	}
+}
+
+func TestUniqMessageID(t *testing.T) {
+	x := trk.UniqMessageID()
+	if len(x) != 21 {
+		t.Errorf("Unexpected result from UniqMessageID")
+	}
+
+	y := trk.UniqMessageID()
+	if x == y {
+		t.Errorf("UniqMessageID returned two consecutive identical values %s and %s. Pigs are now flying", x, y)
+	}
+}
+
+func TestTrackHTMLFaultyInputs(t *testing.T) {
+	myTracker, err := trk.NewTracker(testTrackingDomain)
+	if err != nil {
+		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
+	}
+	myTracker.MessageInfo(testMessageID, testRecipient)
+
+	// Make faulty HTML
+	faultyHTML := "<htm  thats all folks"
+	ioHarness(faultyHTML, "", myTracker.TrackHTML, t)
 }
