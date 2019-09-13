@@ -1,7 +1,4 @@
-<a href="https://www.sparkpost.com">
-    <img alt="SparkPost, Inc." src="https://download.port25.com/login/SP-PMTA-logo-white.png" width="200px" style="background-color:#fa6423;"/>
-</a>
-
+<a href="https://www.sparkpost.com"><img alt="SparkPost, Inc." src="https://download.port25.com/login/SP-PMTA-logo-white.png" width="200px" style="background-color:#fa6423;"/></a>
 
 [Sign up](https://app.sparkpost.com/join?plan=free-0817?src=Social%20Media&sfdcid=70160000000pqBb&pc=GitHubSignUp&utm_source=github&utm_medium=social-media&utm_campaign=github&utm_content=sign-up) for a SparkPost account and visit our [Developer Hub](https://developers.sparkpost.com) for even more content.
 
