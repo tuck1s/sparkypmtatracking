@@ -59,7 +59,7 @@ func makeSparkPostEvent(eStr string, client *redis.Client) c.SparkPostEvent {
 	// Shortcut pointer to the attribute-carrying leaf object; fill in received attributes
 	eptr := &spEvent.EventWrapper.EventGrouping
 	eptr.Type = tev.Type
-	eptr.TargetLinkUrl = tev.TargetLinkUrl
+	eptr.TargetLinkURL = tev.TargetLinkURL
 	eptr.MessageID = tev.MessageID
 	eptr.TimeStamp = tev.TimeStamp
 	eptr.UserAgent = tev.UserAgent
@@ -69,7 +69,7 @@ func makeSparkPostEvent(eStr string, client *redis.Client) c.SparkPostEvent {
 	tKey := c.TrackingPrefix + tev.MessageID
 	enrichmentJSON, err := client.Get(tKey).Result()
 	if err == redis.Nil {
-		c.Console_and_log_fatal("Error: redis key", tKey, "not found")
+		c.ConsoleAndLogFatal("Error: redis key", tKey, "not found")
 	}
 	enrichment := make(map[string]string)
 	err = json.Unmarshal([]byte(enrichmentJSON), &enrichment)
@@ -139,7 +139,7 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	respRd := json.NewDecoder(res.Body)
 	err = respRd.Decode(&resObj)
 	c.Check(err)
-	log.Println("Uploaded", len(batch), "events", gzipSize, "bytes (gzip), SparkPost Ingest response:", res.Status, "results.id=", resObj.Results.Id)
+	log.Println("Uploaded", len(batch), "events", gzipSize, "bytes (gzip), SparkPost Ingest response:", res.Status, "results.id=", resObj.Results.ID)
 	err = res.Body.Close()
 	c.Check(err)
 }
@@ -152,7 +152,7 @@ func main() {
 	host := c.HostCleanup(c.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
 	apiKey := c.GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
 	if apiKey == "" {
-		c.Console_and_log_fatal("SPARKPOST_API_KEY_INGEST not set - stopping")
+		c.ConsoleAndLogFatal("SPARKPOST_API_KEY_INGEST not set - stopping")
 	}
 
 	// Process forever data arriving via Redis queue

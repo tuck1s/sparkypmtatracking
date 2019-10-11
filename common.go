@@ -9,28 +9,27 @@ import (
 	"github.com/go-redis/redis"
 )
 
-// -------------------------------------------------------------------------------------------------------------------
-// Error handling and logging
+// Check error status
 func Check(e error) {
 	if e != nil {
-		Console_and_log_fatal(e)
+		ConsoleAndLogFatal(e)
 	}
 }
 
-func Console_and_log_fatal(s ...interface{}) {
+// ConsoleAndLogFatal writes error to both log and stdout
+func ConsoleAndLogFatal(s ...interface{}) {
 	fmt.Println(s...)
 	log.Fatalln(s...)
 }
 
-// Set a custom logger
+// MyLogger sets a custom logger
 func MyLogger(filename string) {
 	logfile, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 	Check(err)
 	log.SetOutput(logfile)
 }
 
-// -------------------------------------------------------------------------------------------------------------------
-// Helper function for environment variables
+// GetenvDefault returns an environment variable, with default if unset
 func GetenvDefault(k string, d string) string {
 	x := os.Getenv(k)
 	if x == "" {
@@ -39,8 +38,7 @@ func GetenvDefault(k string, d string) string {
 	return x
 }
 
-// -------------------------------------------------------------------------------------------------------------------
-// Clean up SparkPost host address into canonical form (with schema, without /api/v1 path)
+// HostCleanup returns a SparkPost host address in canonical form (with schema, without /api/v1 path)
 func HostCleanup(host string) string {
 	if !strings.HasPrefix(host, "https://") {
 		host = "https://" + host // Add schema
@@ -51,8 +49,7 @@ func HostCleanup(host string) string {
 	return host
 }
 
-// -------------------------------------------------------------------------------------------------------------------
-// Find an element within an array slice
+// PositionIn returns the position of a value within an array of strings, and whether found or not
 func PositionIn(arr []string, val string) (int, bool) {
 	for i, v := range arr {
 		if v == val {
@@ -62,13 +59,26 @@ func PositionIn(arr []string, val string) (int, bool) {
 	return 0, false
 }
 
-// -------------------------------------------------------------------------------------------------------------------
-// Redis
-const RedisQueue = "trk_queue"          // Name of the queue between tracker and feeder tasks
-const RedisAcctHeaders = "acct_headers" // Key that holds the PowerMTA accounting file headers
-const TrackingPrefix = "msgID_"         // Keys beginning with this prefix hold enrichment data
+// Contains tells whether a contains x
+func Contains(a []string, x string) bool {
+	for _, n := range a {
+		if x == n {
+			return true
+		}
+	}
+	return false
+}
 
-// return a client handle for Redis. Assume server is on the standard port
+// RedisQueue connects the tracker and feeder tasks
+const RedisQueue = "trk_queue"
+
+// RedisAcctHeaders holds the PowerMTA accounting file headers
+const RedisAcctHeaders = "acct_headers"
+
+// TrackingPrefix is the prefix for keys holding enrichment data
+const TrackingPrefix = "msgID_"
+
+// MyRedis returns a client handle for Redis, for server the standard port
 func MyRedis() (client *redis.Client) {
 	return redis.NewClient(&redis.Options{
 		Addr:     ":6379",

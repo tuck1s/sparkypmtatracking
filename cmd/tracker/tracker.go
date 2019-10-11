@@ -88,7 +88,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 			}
 		case "click":
 			w.Header().Set("Content-Type", "text/plain")
-			w.Header().Set("Location", e.TargetLinkUrl)
+			w.Header().Set("Location", e.TargetLinkURL)
 			w.WriteHeader(http.StatusFound)
 		}
 	default:

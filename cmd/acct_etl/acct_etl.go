@@ -40,7 +40,7 @@ func storeHeaders(r []string, client *redis.Client) {
 		if found {
 			hdrs[f] = fpos
 		} else {
-			c.Console_and_log_fatal("Required field", f, "is not present in PMTA accounting headers")
+			c.ConsoleAndLogFatal("Required field", f, "is not present in PMTA accounting headers")
 		}
 	}
 	// Pick up positions of optional fields, for event enrichment
@@ -61,14 +61,14 @@ func storeHeaders(r []string, client *redis.Client) {
 func storeEvent(r []string, client *redis.Client) {
 	hdrsJ, err := client.Get(c.RedisAcctHeaders).Result()
 	if err == redis.Nil {
-		c.Console_and_log_fatal("Error: redis key", c.RedisAcctHeaders, "not found")
+		c.ConsoleAndLogFatal("Error: redis key", c.RedisAcctHeaders, "not found")
 	}
 	hdrs := make(map[string]int)
 	err = json.Unmarshal([]byte(hdrsJ), &hdrs)
 	c.Check(err)
 	// read fields from r into a message_id-specific redis key that will enable the feeder to enrich engagement events
 	if msgIDindex, ok := hdrs[msgIDField]; !ok {
-		c.Console_and_log_fatal("Error: redis key", c.RedisAcctHeaders, "does not contain mapping for header_x-sp-message-id")
+		c.ConsoleAndLogFatal("Error: redis key", c.RedisAcctHeaders, "does not contain mapping for header_x-sp-message-id")
 	} else {
 		msgIDKey := c.TrackingPrefix + r[msgIDindex]
 		enrichment := make(map[string]string)
@@ -99,7 +99,7 @@ func main() {
 		f, err = os.Open(flag.Arg(0))
 		c.Check(err)
 	default:
-		c.Console_and_log_fatal("Command line args: input must be from stdin or file")
+		c.ConsoleAndLogFatal("Command line args: input must be from stdin or file")
 	}
 	inbuf := bufio.NewReader(f)
 
@@ -113,7 +113,7 @@ func main() {
 		case typeField:
 			storeHeaders(r, client)
 		default:
-			c.Console_and_log_fatal("Accounting record not of type d:", r)
+			c.ConsoleAndLogFatal("Accounting record not of type d:", r)
 		}
 	}
 }

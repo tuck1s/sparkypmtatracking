@@ -81,8 +81,7 @@ func ioHarness(in, expected string, f func(io.Reader, io.Writer) error, t *testi
 }
 
 func TestTrackHTML(t *testing.T) {
-
-	myTracker, err := trk.NewTracker(testTrackingDomain)
+	myTracker, err := trk.NewWrapper(testTrackingDomain)
 	if err != nil {
 		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
 	}
@@ -94,7 +93,7 @@ func TestTrackHTML(t *testing.T) {
 
 	// with a trailing "/"
 	expectedURL := testTrackingDomain + "/"
-	myTracker, err = trk.NewTracker(expectedURL)
+	myTracker, err = trk.NewWrapper(expectedURL)
 	if err != nil {
 		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
 	}
@@ -106,7 +105,7 @@ func TestTrackHTML(t *testing.T) {
 
 	// with a longer path
 	expectedURL = testTrackingDomain + "/" + testTrackingPath
-	myTracker, err = trk.NewTracker(expectedURL)
+	myTracker, err = trk.NewWrapper(expectedURL)
 	if err != nil {
 		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
 	}
@@ -119,7 +118,7 @@ func TestTrackHTML(t *testing.T) {
 
 func TestTrackHTMLfaultyInputs(t *testing.T) {
 	// With uninitialised tracker, pixels should return empty string
-	myTracker := trk.Tracker{}
+	myTracker := trk.Wrapper{}
 	s := myTracker.InitialOpenPixel()
 	if s != "" {
 		t.Errorf("Expecting empty result from InitialOpenPixel, got %s", s)
@@ -140,12 +139,12 @@ func TestTrackHTMLfaultyInputs(t *testing.T) {
 
 func TestNewTracker(t *testing.T) {
 	// faulty inputs: malformed URLs are rejected
-	_, err := trk.NewTracker("httttps://not a url")
+	_, err := trk.NewWrapper("httttps://not a url")
 	if err == nil {
 		t.Errorf("Faulty input test should have failed")
 	}
 
-	_, err = trk.NewTracker("https://example.com/?pet=dog")
+	_, err = trk.NewWrapper("https://example.com/?pet=dog")
 	if err == nil {
 		t.Errorf("Faulty input test should have failed")
 	}
@@ -164,7 +163,7 @@ func TestUniqMessageID(t *testing.T) {
 }
 
 func TestTrackHTMLFaultyInputs(t *testing.T) {
-	myTracker, err := trk.NewTracker(testTrackingDomain)
+	myTracker, err := trk.NewWrapper(testTrackingDomain)
 	if err != nil {
 		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
 	}
