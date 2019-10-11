@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-cd cmd/acct_etl; go build; cd ../..
-cd cmd/feeder; go build; cd ../..
-cd cmd/tracker; go build; cd ../..
-cd cmd/wrapper; go build; cd ../..
+go build ./cmd/acct_etl
+go build ./cmd/feeder
+go build ./cmd/tracker
+go build ./cmd/wrapper
