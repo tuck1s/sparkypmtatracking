@@ -11,3 +11,5 @@ cmd/wrapper/__debug_bin
 cmd/wrapper/wrapper
 debug*.eml
 debug*.txt
+*.pem
+c.out
