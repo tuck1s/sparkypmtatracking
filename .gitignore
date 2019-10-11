@@ -9,3 +9,5 @@ cmd/feeder/__debug_bin
 cmd/wrapper/__debug_bin
 .DS_Store
 cmd/wrapper/wrapper
+debug*.eml
+debug*.txt

@@ -38,6 +38,8 @@ func GetenvDefault(k string, d string) string {
 	return x
 }
 
+//-----------------------------------------------------------------------------
+
 // HostCleanup returns a SparkPost host address in canonical form (with schema, without /api/v1 path)
 func HostCleanup(host string) string {
 	if !strings.HasPrefix(host, "https://") {
@@ -48,6 +50,8 @@ func HostCleanup(host string) string {
 	host = strings.TrimSuffix(host, "/")
 	return host
 }
+
+//-----------------------------------------------------------------------------
 
 // PositionIn returns the position of a value within an array of strings, and whether found or not
 func PositionIn(arr []string, val string) (int, bool) {
@@ -68,6 +72,8 @@ func Contains(a []string, x string) bool {
 	}
 	return false
 }
+
+//-----------------------------------------------------------------------------
 
 // RedisQueue connects the tracker and feeder tasks
 const RedisQueue = "trk_queue"

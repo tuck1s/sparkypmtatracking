@@ -5,23 +5,23 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 
 	"github.com/tuck1s/go-smtpproxy"
 )
 
 //-----------------------------------------------------------------------------
 // Backend handlers
-//-----------------------------------------------------------------------------
 
 // The Backend implements SMTP server methods.
 type Backend struct {
 	outHostPort   string
 	verbose       bool
-	upstreamDebug io.WriteCloser
+	upstreamDebug *os.File
 }
 
 // NewBackend init function
-func NewBackend(outHostPort string, verbose bool, upstreamDebug io.WriteCloser) *Backend {
+func NewBackend(outHostPort string, verbose bool, upstreamDebug *os.File) *Backend {
 	b := Backend{
 		outHostPort:   outHostPort,
 		verbose:       verbose,
@@ -52,16 +52,12 @@ func (bkd *Backend) Init() (smtpproxy.Session, error) {
 
 //-----------------------------------------------------------------------------
 // Session handlers
-//-----------------------------------------------------------------------------
 
 // A Session is returned after successful login. Here hold information that needs to persist across message phases.
 type Session struct {
 	bkd      *Backend          // The backend that created this session. Allows session methods to e.g. log
 	upstream *smtpproxy.Client // the upstream client this backend is driving
 }
-
-const upstreamBlockMsg = "Unable to handle messages at the moment, sorry"
-const upstreamBlockCode = 500
 
 // cmdTwiddle returns different flow markers depending on whether connection is secure (like Swaks does)
 func cmdTwiddle(s *Session) string {
@@ -187,6 +183,10 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	} else {
 		s.bkd.logger(respTwiddle(s), "DATA accepted, bytes written =", bytesWritten)
 		s.bkd.logger(respTwiddle(s), code, msg)
+	}
+	if !s.bkd.verbose {
+		// Short-form logging - one line per message - used when "verbose" not set
+		log.Println("Message DATA bytes", bytesWritten, "upstream response", code, msg)
 	}
 	return code, msg, err
 }

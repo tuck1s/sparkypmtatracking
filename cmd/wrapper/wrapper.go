@@ -14,31 +14,33 @@ import (
 
 func main() {
 	//c.MyLogger("wrapper.log")
-
 	inHostPort := flag.String("in_hostport", "localhost:587", "Port number to serve incoming SMTP requests")
 	outHostPort := flag.String("out_hostport", "smtp.sparkpostmail.com:587", "host:port for onward routing of SMTP requests")
-	verboseOpt := flag.Bool("verbose", false, "print out lots of messages")
 	certfile := flag.String("certfile", "", "Certificate file for this server")
 	privkeyfile := flag.String("privkeyfile", "", "Private key file for this server")
+	verboseOpt := flag.Bool("verbose", false, "print out lots of messages")
 	serverDebug := flag.String("server_debug", "", "File to write downstream server SMTP conversation for debugging")
-	upstreamDebug := flag.String("upstream_debug", "", "File to write upstream proxy SMTP conversation for debugging")
+	upstreamDebug := flag.String("upstream_debug", "", "File to write upstream DATA for debugging")
 	flag.Parse()
 
 	log.Println("Incoming host:port set to", *inHostPort)
 	log.Println("Outgoing host:port set to", *outHostPort)
 
-	var upstreamDebugFile os.File
+	var upstreamDebugFile *os.File
+	var err error
+
 	if *upstreamDebug != "" {
 		// Overwrite each time
-		upstreamDbgFile, err := os.OpenFile(*upstreamDebug, os.O_CREATE|os.O_WRONLY, 0644)
+		upstreamDebugFile, err = os.OpenFile(*upstreamDebug, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatal(err)
 		}
-		defer upstreamDbgFile.Close()
+		log.Println("Proxy writing upstream DATA to", upstreamDebugFile.Name())
+		defer upstreamDebugFile.Close()
 	}
 
 	// Set up parameters that the backend will use
-	be := c.NewBackend(*outHostPort, *verboseOpt, &upstreamDebugFile)
+	be := c.NewBackend(*outHostPort, *verboseOpt, upstreamDebugFile)
 
 	s := smtpproxy.NewServer(be)
 	s.Addr = *inHostPort
@@ -70,7 +72,7 @@ func main() {
 	}
 	s.Domain = subject
 	log.Println("Proxy will advertise itself as", s.Domain)
-	log.Println("Backend logging:", *verboseOpt)
+	log.Println("Verbose SMTP conversation logging:", *verboseOpt)
 
 	if *serverDebug != "" {
 		// Need local ref to the file, to allow Close() and Name() methods which io.Writer doesn't have
@@ -82,10 +84,6 @@ func main() {
 		defer dbgFile.Close()
 		s.Debug = dbgFile
 		log.Println("Proxy logging SMTP commands, responses and downstream DATA to", dbgFile.Name())
-	}
-
-	if true { // TODO
-		log.Println("Proxy writing upstream DATA to", upstreamDebugFile.Name())
 	}
 
 	if err := s.ListenAndServe(); err != nil {
