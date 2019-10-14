@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/tuck1s/go-smtpproxy"
-	c "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
 func main() {
-	//c.MyLogger("wrapper.log")
+	//spmta.MyLogger("wrapper.log")
 	inHostPort := flag.String("in_hostport", "localhost:587", "Port number to serve incoming SMTP requests")
 	outHostPort := flag.String("out_hostport", "smtp.sparkpostmail.com:587", "host:port for onward routing of SMTP requests")
 	certfile := flag.String("certfile", "", "Certificate file for this server")
@@ -21,16 +21,16 @@ func main() {
 	verboseOpt := flag.Bool("verbose", false, "print out lots of messages")
 	downstreamDebug := flag.String("downstream_debug", "", "File to write downstream server SMTP conversation for debugging")
 	upstreamDataDebug := flag.String("upstream_data_debug", "", "File to write upstream DATA for debugging")
+	wrapURL := flag.String("engagement_url", "", "Engagement tracking URL used in html email body for opens and clicks")
 	flag.Parse()
 
 	log.Println("Incoming host:port set to", *inHostPort)
 	log.Println("Outgoing host:port set to", *outHostPort)
 
+	// Logging of proxy to upstream server DATA (in RFC822 .eml format)
 	var upstreamDebugFile *os.File
 	var err error
-
 	if *upstreamDataDebug != "" {
-		// Overwrite each time
 		upstreamDebugFile, err = os.OpenFile(*upstreamDataDebug, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatal(err)
@@ -39,9 +39,19 @@ func main() {
 		defer upstreamDebugFile.Close()
 	}
 
-	// Set up parameters that the backend will use
-	be := c.NewBackend(*outHostPort, *verboseOpt, upstreamDebugFile)
+	var myWrapper *spmta.Wrapper // Will be nil if not using engagement tracking
+	if *wrapURL == "" {
+		log.Println("Engagement tracking not active", *wrapURL)
+	} else {
+		log.Println("Engagement tracking URL:", *wrapURL)
+		myWrapper, err = spmta.NewWrapper(*wrapURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
 
+	// Set up parameters that the backend will use
+	be := spmta.NewBackend(*outHostPort, *verboseOpt, upstreamDebugFile, myWrapper)
 	s := smtpproxy.NewServer(be)
 	s.Addr = *inHostPort
 	s.ReadTimeout = 60 * time.Second
@@ -85,6 +95,7 @@ func main() {
 		log.Println("Proxy logging SMTP commands, responses and downstream DATA to", dbgFile.Name())
 	}
 
+	// Begin serving requests
 	if err := s.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}

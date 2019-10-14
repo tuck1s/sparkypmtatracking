@@ -14,15 +14,15 @@ import (
 	"strings"
 	"time"
 
-	c "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkyPMTATracking"
 
 	"github.com/go-redis/redis"
 	"github.com/google/uuid"
 )
 
 // Make a fake GeoIP
-func fakeGeoIP() c.GeoIP {
-	return c.GeoIP{
+func fakeGeoIP() spmta.GeoIP {
+	return spmta.GeoIP{
 		Country:    "US",
 		Region:     "MD",
 		City:       "Columbia",
@@ -51,11 +51,11 @@ func uniqMessageID() string {
 const ingestBatchSize = 1000
 const ingestMaxWait = 10 * time.Second
 
-func makeSparkPostEvent(eStr string, client *redis.Client) c.SparkPostEvent {
-	var tev c.TrackEvent
+func makeSparkPostEvent(eStr string, client *redis.Client) spmta.SparkPostEvent {
+	var tev spmta.TrackEvent
 	err := json.Unmarshal([]byte(eStr), &tev)
-	c.Check(err)
-	var spEvent c.SparkPostEvent
+	spmta.Check(err)
+	var spEvent spmta.SparkPostEvent
 	// Shortcut pointer to the attribute-carrying leaf object; fill in received attributes
 	eptr := &spEvent.EventWrapper.EventGrouping
 	eptr.Type = tev.Type
@@ -66,14 +66,14 @@ func makeSparkPostEvent(eStr string, client *redis.Client) c.SparkPostEvent {
 	eptr.IPAddress = tev.IPAddress
 
 	// Enrich with PowerMTA accounting-pipe values, if we have these, from persistent storage
-	tKey := c.TrackingPrefix + tev.MessageID
+	tKey := spmta.TrackingPrefix + tev.MessageID
 	enrichmentJSON, err := client.Get(tKey).Result()
 	if err == redis.Nil {
-		c.ConsoleAndLogFatal("Error: redis key", tKey, "not found")
+		spmta.ConsoleAndLogFatal("Error: redis key", tKey, "not found")
 	}
 	enrichment := make(map[string]string)
 	err = json.Unmarshal([]byte(enrichmentJSON), &enrichment)
-	c.Check(err)
+	spmta.Check(err)
 	eptr.MsgFrom = enrichment["orig"]
 	eptr.RcptTo = enrichment["rcpt"]
 	eptr.CampaignID = enrichment["jobId"]
@@ -104,7 +104,7 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	for _, eStr := range batch {
 		e := makeSparkPostEvent(eStr, client)
 		eJSON, err := json.Marshal(e)
-		c.Check(err)
+		spmta.Check(err)
 		ingestData.Write(eJSON)
 		ingestData.WriteString("\n")
 	}
@@ -114,9 +114,9 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	ir := bufio.NewReader(&ingestData)
 	zw := gzip.NewWriter(&zbuf)
 	_, err := io.Copy(zw, ir)
-	c.Check(err)
+	spmta.Check(err)
 	err = zw.Close() // ensure all data written (seems to be necessary)
-	c.Check(err)
+	spmta.Check(err)
 	gzipSize := zbuf.Len()
 
 	// Prepare the https POST request
@@ -126,39 +126,39 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	}
 	url := host + "/api/v1/ingest/events"
 	req, err := http.NewRequest("POST", url, zr)
-	c.Check(err)
+	spmta.Check(err)
 	req.Header = map[string][]string{
 		"Authorization":    {apiKey},
 		"Content-Type":     {"application/x-ndjson"},
 		"Content-Encoding": {"gzip"},
 	}
 	res, err := netClient.Do(req)
-	c.Check(err)
+	spmta.Check(err)
 
-	var resObj c.IngestResult
+	var resObj spmta.IngestResult
 	respRd := json.NewDecoder(res.Body)
 	err = respRd.Decode(&resObj)
-	c.Check(err)
+	spmta.Check(err)
 	log.Println("Uploaded", len(batch), "events", gzipSize, "bytes (gzip), SparkPost Ingest response:", res.Status, "results.id=", resObj.Results.ID)
 	err = res.Body.Close()
-	c.Check(err)
+	spmta.Check(err)
 }
 
 func main() {
 	// Use logging, as this program will be executed without an attached console
-	c.MyLogger("feeder.log")
-	client := c.MyRedis()
+	spmta.MyLogger("feeder.log")
+	client := spmta.MyRedis()
 	// Get SparkPost ingest credentials from env vars
-	host := c.HostCleanup(c.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
-	apiKey := c.GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
+	host := spmta.HostCleanup(spmta.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
+	apiKey := spmta.GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
 	if apiKey == "" {
-		c.ConsoleAndLogFatal("SPARKPOST_API_KEY_INGEST not set - stopping")
+		spmta.ConsoleAndLogFatal("SPARKPOST_API_KEY_INGEST not set - stopping")
 	}
 
 	// Process forever data arriving via Redis queue
 	trackingData := make([]string, 0, ingestBatchSize) // Pre-allocate for efficiency
 	for {
-		d, err := client.LPop(c.RedisQueue).Result()
+		d, err := client.LPop(spmta.RedisQueue).Result()
 		if err == redis.Nil {
 			// special value means queue is empty. Ingest any data we have collected, then wait a while
 			if len(trackingData) > 0 {

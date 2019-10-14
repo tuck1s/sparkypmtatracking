@@ -15,17 +15,19 @@ import (
 
 // The Backend implements SMTP server methods.
 type Backend struct {
-	outHostPort   string
-	verbose       bool
-	upstreamDebug *os.File
+	outHostPort       string
+	verbose           bool
+	upstreamDataDebug *os.File
+	wrapper           *Wrapper
 }
 
 // NewBackend init function
-func NewBackend(outHostPort string, verbose bool, upstreamDebug *os.File) *Backend {
+func NewBackend(outHostPort string, verbose bool, upstreamDataDebug *os.File, wrapper *Wrapper) *Backend {
 	b := Backend{
-		outHostPort:   outHostPort,
-		verbose:       verbose,
-		upstreamDebug: upstreamDebug,
+		outHostPort:       outHostPort,
+		verbose:           verbose,
+		upstreamDataDebug: upstreamDataDebug,
+		wrapper:           wrapper,
 	}
 	return &b
 }
@@ -164,8 +166,8 @@ func (s *Session) DataCommand() (io.WriteCloser, int, string, error) {
 // Data body (dot delimited) pass upstream, returning the usual responses
 func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	var w2 io.Writer // If upstream debugging, tee off a copy into the debug file.
-	if s.bkd.upstreamDebug != nil {
-		w2 = io.MultiWriter(w, s.bkd.upstreamDebug)
+	if s.bkd.upstreamDataDebug != nil {
+		w2 = io.MultiWriter(w, s.bkd.upstreamDataDebug)
 	} else {
 		w2 = w
 	}
@@ -186,7 +188,7 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	}
 	if !s.bkd.verbose {
 		// Short-form logging - one line per message - used when "verbose" not set
-		log.Println("Message DATA bytes", bytesWritten, "upstream response", code, msg)
+		log.Printf("Message DATA upstream,%d,%d,%s\n", bytesWritten, code, msg)
 	}
 	return code, msg, err
 }

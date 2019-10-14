@@ -13,20 +13,24 @@ import (
 	"strings"
 	"time"
 
-	c "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
-func trackingServer(w http.ResponseWriter, req *http.Request) {
-	// Expects URL paths of the form /tracking/open/xyzzy and /tracking/click/xyzzy
-	// where xyzzy = base64 urlsafe encoded, Zlib compressed, []byte
-	// These are written to the Redis queue
+// Declare this in package scope, as it's unchanging
+var transparentGif = []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff" +
+	"\xff\xff\xff\x21\xf9\x04\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00" +
+	"\x01\x00\x01\x00\x00\x02\x02\x4c\x01\x00\x3b\x00")
 
+// TrackingServer expects URL paths of the form /tracking/open/xyzzy and /tracking/click/xyzzy
+// where xyzzy = base64 urlsafe encoded, Zlib compressed, []byte
+// These are written to the Redis queue
+func trackingServer(w http.ResponseWriter, req *http.Request) {
 	s := strings.Split(req.URL.Path[1:], "/")
 	if len(s) < 3 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	var e c.TrackEvent
+	var e spmta.TrackEvent
 	e.Type = s[1]                 // add the event type in from the path
 	e.UserAgent = req.UserAgent() // add user agent
 	e.IPAddress, _, _ = net.SplitHostPort(req.RemoteAddr)
@@ -63,14 +67,13 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 	}
 	log.Println(e)
 
-	client := c.MyRedis()
-	_, err = client.RPush(c.RedisQueue, eBytes).Result()
+	client := spmta.MyRedis()
+	_, err = client.RPush(spmta.RedisQueue, eBytes).Result()
 	if err != nil {
 		log.Println("Redis error", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
 	// Emulate response that SparkPost gives on GET opens, clicks and OPTIONS method. Change as required
 	w.Header().Set("Server", "msys-http")
 	switch req.Method {
@@ -79,9 +82,6 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 		case "open":
 			w.Header().Set("Content-Type", "image/gif")
 			w.Header().Set("Cache-Control", "no-cache, max-age=0")
-			transparentGif := []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff" +
-				"\xff\xff\xff\x21\xf9\x04\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00" +
-				"\x01\x00\x01\x00\x00\x02\x02\x4c\x01\x00\x3b\x00")
 			_, err = w.Write(transparentGif)
 			if err != nil {
 				log.Println("http.ResponseWriter error", err)
@@ -100,11 +100,11 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 
 func main() {
 	// Use logging, as this program will be executed without an attached console
-	c.MyLogger("tracker.log")
+	spmta.MyLogger("tracker.log")
 	http.HandleFunc("/tracking/", trackingServer) // Accept subtree matches
 	server := &http.Server{
 		Addr: ":8888",
 	}
 	err := server.ListenAndServe()
-	c.Check(err)
+	spmta.Check(err)
 }

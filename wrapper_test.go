@@ -81,39 +81,39 @@ func ioHarness(in, expected string, f func(io.Reader, io.Writer) error, t *testi
 }
 
 func TestTrackHTML(t *testing.T) {
-	myTracker, err := trk.NewWrapper(testTrackingDomain)
+	myWrapper, err := trk.NewWrapper(testTrackingDomain)
 	if err != nil {
-		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
+		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
-	if myTracker.URL.String() != testTrackingDomain {
-		t.Errorf("Tracking domain set wrongly to %s", myTracker.URL.String())
+	if myWrapper.URL.String() != testTrackingDomain {
+		t.Errorf("Tracking domain set wrongly to %s", myWrapper.URL.String())
 	}
-	myTracker.MessageInfo(testMessageID, testRecipient)
-	ioHarness(testHTML, expectedHTMLoutput, myTracker.TrackHTML, t)
+	myWrapper.MessageInfo(testMessageID, testRecipient)
+	ioHarness(testHTML, expectedHTMLoutput, myWrapper.TrackHTML, t)
 
 	// with a trailing "/"
 	expectedURL := testTrackingDomain + "/"
-	myTracker, err = trk.NewWrapper(expectedURL)
+	myWrapper, err = trk.NewWrapper(expectedURL)
 	if err != nil {
-		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
+		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
-	if myTracker.URL.String() != expectedURL {
-		t.Errorf("Tracking domain set to %s", myTracker.URL.String())
+	if myWrapper.URL.String() != expectedURL {
+		t.Errorf("Tracking domain set to %s", myWrapper.URL.String())
 	}
-	myTracker.MessageInfo(testMessageID, testRecipient)
-	ioHarness(testHTML, expectedHTMLoutput, myTracker.TrackHTML, t)
+	myWrapper.MessageInfo(testMessageID, testRecipient)
+	ioHarness(testHTML, expectedHTMLoutput, myWrapper.TrackHTML, t)
 
 	// with a longer path
 	expectedURL = testTrackingDomain + "/" + testTrackingPath
-	myTracker, err = trk.NewWrapper(expectedURL)
+	myWrapper, err = trk.NewWrapper(expectedURL)
 	if err != nil {
-		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
+		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
-	if myTracker.URL.String() != expectedURL {
-		t.Errorf("Tracking domain set to %s", myTracker.URL.String())
+	if myWrapper.URL.String() != expectedURL {
+		t.Errorf("Tracking domain set to %s", myWrapper.URL.String())
 	}
-	myTracker.MessageInfo(testMessageID, testRecipient)
-	ioHarness(testHTML, expectedHTMLoutputLongPath, myTracker.TrackHTML, t)
+	myWrapper.MessageInfo(testMessageID, testRecipient)
+	ioHarness(testHTML, expectedHTMLoutputLongPath, myWrapper.TrackHTML, t)
 }
 
 func TestTrackHTMLfaultyInputs(t *testing.T) {
@@ -165,7 +165,7 @@ func TestUniqMessageID(t *testing.T) {
 func TestTrackHTMLFaultyInputs(t *testing.T) {
 	myTracker, err := trk.NewWrapper(testTrackingDomain)
 	if err != nil {
-		t.Errorf("Error returned from myTracker.NewTracker: %v", err)
+		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
 	myTracker.MessageInfo(testMessageID, testRecipient)
 

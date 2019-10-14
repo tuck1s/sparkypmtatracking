@@ -23,7 +23,7 @@ func UniqMessageID() string {
 	return u
 }
 
-// WrapperData passed in this project's tracking URLs
+// WrapperData is used to build the tracking URL
 type WrapperData struct {
 	Action        string `json:"act"` // carries "c" = click, "o" = open, "i" = initial open
 	TargetLinkURL string `json:"t_url"`
@@ -63,24 +63,24 @@ func (trk *Wrapper) MessageInfo(msgID, rcpt string) {
 // InitialOpenPixel returns an html fragment with pixel for initial open tracking.
 // If there are problems, empty string is returned.
 func (trk *Wrapper) InitialOpenPixel() string {
+	const pixelPrefix = `<div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px` +
+		`;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="`
+	const pixelSuffix = `"/></div>` + "\n"
 	if trk.URL.String() == "" {
 		return ""
 	}
-	s1 := `<div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px` +
-		`;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="`
-	s2 := `"/></div>` + "\n"
-	return s1 + trk.wrap("i", "") + s2
+	return pixelPrefix + trk.wrap("i", "") + pixelSuffix
 }
 
 // OpenPixel returns an html fragment with pixel for bottom open tracking.
 // If there are problems, empty string is returned.
 func (trk *Wrapper) OpenPixel() string {
+	const pixelPrefix = `<img border="0" width="1" height="1" alt="" src="`
+	const pixelSuffix = `">` + "\n"
 	if trk.URL.String() == "" {
 		return ""
 	}
-	s1 := `<img border="0" width="1" height="1" alt="" src="`
-	s2 := `">` + "\n"
-	return s1 + trk.wrap("o", "") + s2
+	return pixelPrefix + trk.wrap("o", "") + pixelSuffix
 }
 
 // WrapURL returns the wrapped, encoded version of the URL for engagement tracking.

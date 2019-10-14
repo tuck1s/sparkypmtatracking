@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	c "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkyPMTATracking"
 
 	"github.com/go-redis/redis"
 	"github.com/smartystreets/scanners/csv"
@@ -36,41 +36,41 @@ func storeHeaders(r []string, client *redis.Client) {
 	log.Println("PMTA accounting headers from pipe ", r)
 	hdrs := make(map[string]int)
 	for _, f := range requiredAcctFields {
-		fpos, found := c.PositionIn(r, f)
+		fpos, found := spmta.PositionIn(r, f)
 		if found {
 			hdrs[f] = fpos
 		} else {
-			c.ConsoleAndLogFatal("Required field", f, "is not present in PMTA accounting headers")
+			spmta.ConsoleAndLogFatal("Required field", f, "is not present in PMTA accounting headers")
 		}
 	}
 	// Pick up positions of optional fields, for event enrichment
 	for _, f := range optionalAcctFields {
-		fpos, found := c.PositionIn(r, f)
+		fpos, found := spmta.PositionIn(r, f)
 		if found {
 			hdrs[f] = fpos
 		}
 	}
 	hdrsJSON, err := json.Marshal(hdrs)
-	c.Check(err)
-	_, err = client.Set(c.RedisAcctHeaders, hdrsJSON, 0).Result()
-	c.Check(err)
-	log.Println("Loaded", c.RedisAcctHeaders, "->", string(hdrsJSON), "into Redis")
+	spmta.Check(err)
+	_, err = client.Set(spmta.RedisAcctHeaders, hdrsJSON, 0).Result()
+	spmta.Check(err)
+	log.Println("Loaded", spmta.RedisAcctHeaders, "->", string(hdrsJSON), "into Redis")
 }
 
 // Store a single accounting event r into redis, based on previously seen header format
 func storeEvent(r []string, client *redis.Client) {
-	hdrsJ, err := client.Get(c.RedisAcctHeaders).Result()
+	hdrsJ, err := client.Get(spmta.RedisAcctHeaders).Result()
 	if err == redis.Nil {
-		c.ConsoleAndLogFatal("Error: redis key", c.RedisAcctHeaders, "not found")
+		spmta.ConsoleAndLogFatal("Error: redis key", spmta.RedisAcctHeaders, "not found")
 	}
 	hdrs := make(map[string]int)
 	err = json.Unmarshal([]byte(hdrsJ), &hdrs)
-	c.Check(err)
+	spmta.Check(err)
 	// read fields from r into a message_id-specific redis key that will enable the feeder to enrich engagement events
 	if msgIDindex, ok := hdrs[msgIDField]; !ok {
-		c.ConsoleAndLogFatal("Error: redis key", c.RedisAcctHeaders, "does not contain mapping for header_x-sp-message-id")
+		spmta.ConsoleAndLogFatal("Error: redis key", spmta.RedisAcctHeaders, "does not contain mapping for header_x-sp-message-id")
 	} else {
-		msgIDKey := c.TrackingPrefix + r[msgIDindex]
+		msgIDKey := spmta.TrackingPrefix + r[msgIDindex]
 		enrichment := make(map[string]string)
 		for k, i := range hdrs {
 			if k != msgIDField && k != typeField {
@@ -79,15 +79,15 @@ func storeEvent(r []string, client *redis.Client) {
 		}
 		// Set key message_id in Redis
 		enrichmentJSON, err := json.Marshal(enrichment)
-		c.Check(err)
+		spmta.Check(err)
 		_, err = client.Set(msgIDKey, enrichmentJSON, ttl).Result()
-		c.Check(err)
+		spmta.Check(err)
 		log.Println("Loaded", msgIDKey, "->", string(enrichmentJSON), "into Redis")
 	}
 }
 
 func main() {
-	c.MyLogger("acct_etl.log")
+	spmta.MyLogger("acct_etl.log")
 	flag.Parse()
 	var f *os.File
 	var err error
@@ -97,13 +97,13 @@ func main() {
 		f = os.Stdin
 	case 1:
 		f, err = os.Open(flag.Arg(0))
-		c.Check(err)
+		spmta.Check(err)
 	default:
-		c.ConsoleAndLogFatal("Command line args: input must be from stdin or file")
+		spmta.ConsoleAndLogFatal("Command line args: input must be from stdin or file")
 	}
 	inbuf := bufio.NewReader(f)
 
-	client := c.MyRedis()
+	client := spmta.MyRedis()
 	input := csv.NewScanner(inbuf)
 	for input.Scan() {
 		r := input.Record()
@@ -113,7 +113,7 @@ func main() {
 		case typeField:
 			storeHeaders(r, client)
 		default:
-			c.ConsoleAndLogFatal("Accounting record not of type d:", r)
+			spmta.ConsoleAndLogFatal("Accounting record not of type d:", r)
 		}
 	}
 }
