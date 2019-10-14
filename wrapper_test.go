@@ -66,17 +66,20 @@ const expectedHTMLoutputLongPath = `<!DOCTYPE html>
 `
 
 // ioHarness takes input as a string, expected output as a string,
-// calls the "under test" io stream "copy-like" function f, and compares the returned output with expected
-func ioHarness(in, expected string, f func(io.Reader, io.Writer) error, t *testing.T) {
+// calls the "io.Copy-like" function f (the function under test), and compares the returned output with expected
+func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error), t *testing.T) {
 	r := strings.NewReader(in)
 	var outbuf bytes.Buffer
-	err := f(r, &outbuf)
+	n, err := f(&outbuf, r) // Note order (dest, src) a la io.Copy
 	if err != nil {
 		t.Errorf("Error returned from myTracker.TrackHTML: %v", err)
 	}
 	got := outbuf.String()
 	if got != expected {
 		t.Errorf("Got and expected values differ:\n---Got\n%s\n\n---Expected\n%s\n", got, expected)
+	}
+	if n != len(expected) {
+		t.Errorf("Count of copied bytes differs: got %d, expexcted %d\n", n, len(expected))
 	}
 }
 
@@ -88,7 +91,7 @@ func TestTrackHTML(t *testing.T) {
 	if myWrapper.URL.String() != testTrackingDomain {
 		t.Errorf("Tracking domain set wrongly to %s", myWrapper.URL.String())
 	}
-	myWrapper.MessageInfo(testMessageID, testRecipient)
+	myWrapper.SetMessageInfo(testMessageID, testRecipient)
 	ioHarness(testHTML, expectedHTMLoutput, myWrapper.TrackHTML, t)
 
 	// with a trailing "/"
@@ -100,7 +103,7 @@ func TestTrackHTML(t *testing.T) {
 	if myWrapper.URL.String() != expectedURL {
 		t.Errorf("Tracking domain set to %s", myWrapper.URL.String())
 	}
-	myWrapper.MessageInfo(testMessageID, testRecipient)
+	myWrapper.SetMessageInfo(testMessageID, testRecipient)
 	ioHarness(testHTML, expectedHTMLoutput, myWrapper.TrackHTML, t)
 
 	// with a longer path
@@ -112,7 +115,7 @@ func TestTrackHTML(t *testing.T) {
 	if myWrapper.URL.String() != expectedURL {
 		t.Errorf("Tracking domain set to %s", myWrapper.URL.String())
 	}
-	myWrapper.MessageInfo(testMessageID, testRecipient)
+	myWrapper.SetMessageInfo(testMessageID, testRecipient)
 	ioHarness(testHTML, expectedHTMLoutputLongPath, myWrapper.TrackHTML, t)
 }
 
@@ -167,7 +170,7 @@ func TestTrackHTMLFaultyInputs(t *testing.T) {
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
-	myTracker.MessageInfo(testMessageID, testRecipient)
+	myTracker.SetMessageInfo(testMessageID, testRecipient)
 
 	// Make faulty HTML
 	faultyHTML := "<htm  thats all folks"

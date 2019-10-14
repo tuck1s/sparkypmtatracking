@@ -54,8 +54,8 @@ func NewWrapper(URL string) (*Wrapper, error) {
 	return &trk, nil
 }
 
-// MessageInfo sets the per-message specifics
-func (trk *Wrapper) MessageInfo(msgID, rcpt string) {
+// SetMessageInfo sets the per-message specifics
+func (trk *Wrapper) SetMessageInfo(msgID string, rcpt string) {
 	trk.messageID = msgID
 	trk.rcptTo = rcpt
 }
@@ -92,7 +92,7 @@ func (trk *Wrapper) WrapURL(url string) string {
 	return trk.wrap("c", url)
 }
 
-func (trk *Wrapper) wrap(action, targetlink string) string {
+func (trk *Wrapper) wrap(action string, targetlink string) string {
 	pathData, err := json.Marshal(WrapperData{
 		Action:        action,
 		TargetLinkURL: targetlink,
@@ -121,19 +121,20 @@ func (trk *Wrapper) wrap(action, targetlink string) string {
 	return u.String()
 }
 
-// TrackHTML streams html content from r to w, adding engagement tracking
-func (trk *Wrapper) TrackHTML(r io.Reader, w io.Writer) error {
+// TrackHTML streams content to w from r (a la io.Copy), adding engagement tracking by wrapping links and inserting open pixel(s).
+//Returns count of bytes written and error status
+func (trk *Wrapper) TrackHTML(w io.Writer, r io.Reader) (int, error) {
+	var count, c int
+	var err error
 	tok := html.NewTokenizer(r)
 	for {
 		tokType := tok.Next()
 		switch tokType {
 		case html.ErrorToken:
-			err := tok.Err()
+			err = tok.Err()
 			if err == io.EOF {
-				return nil //end of the file, normal exit
+				return count, nil //end of the file, normal exit
 			}
-			return err
-
 		case html.StartTagToken:
 			token := tok.Token()
 			if token.Data == "a" {
@@ -143,25 +144,36 @@ func (trk *Wrapper) TrackHTML(r io.Reader, w io.Writer) error {
 						token.Attr[k].Val = trk.WrapURL(v.Val)
 					}
 				}
-				io.WriteString(w, token.String())
+				c, err = io.WriteString(w, token.String())
+				count += c
 			} else {
 				if token.Data == "body" {
-					w.Write(tok.Raw())
-					io.WriteString(w, trk.InitialOpenPixel()) // top tracking pixel
+					c, err = w.Write(tok.Raw())
+					count += c
+					c, err = io.WriteString(w, trk.InitialOpenPixel()) // top tracking pixel
+					count += c
 				} else {
-					w.Write(tok.Raw()) // pass through
+					c, err = w.Write(tok.Raw()) // pass through
+					count += c
 				}
 			}
 		case html.EndTagToken:
 			token := tok.Token()
 			if token.Data == "body" {
-				io.WriteString(w, trk.OpenPixel()) // bottom tracking pixel
-				w.Write(tok.Raw())
+				c, err = io.WriteString(w, trk.OpenPixel()) // bottom tracking pixel
+				count += c
+				c, err = w.Write(tok.Raw())
+				count += c
 			} else {
-				w.Write(tok.Raw()) // pass through
+				c, err = w.Write(tok.Raw()) // pass through
+				count += c
 			}
 		default:
-			w.Write(tok.Raw()) // pass through
+			c, err = w.Write(tok.Raw()) // pass through
+			count += c
+		}
+		if err != nil {
+			return count, err // Catches errors that may arise from the Write & WriteString calls
 		}
 	}
 }
