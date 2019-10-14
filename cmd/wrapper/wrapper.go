@@ -19,8 +19,8 @@ func main() {
 	certfile := flag.String("certfile", "", "Certificate file for this server")
 	privkeyfile := flag.String("privkeyfile", "", "Private key file for this server")
 	verboseOpt := flag.Bool("verbose", false, "print out lots of messages")
-	serverDebug := flag.String("server_debug", "", "File to write downstream server SMTP conversation for debugging")
-	upstreamDebug := flag.String("upstream_debug", "", "File to write upstream DATA for debugging")
+	downstreamDebug := flag.String("downstream_debug", "", "File to write downstream server SMTP conversation for debugging")
+	upstreamDataDebug := flag.String("upstream_data_debug", "", "File to write upstream DATA for debugging")
 	flag.Parse()
 
 	log.Println("Incoming host:port set to", *inHostPort)
@@ -29,9 +29,9 @@ func main() {
 	var upstreamDebugFile *os.File
 	var err error
 
-	if *upstreamDebug != "" {
+	if *upstreamDataDebug != "" {
 		// Overwrite each time
-		upstreamDebugFile, err = os.OpenFile(*upstreamDebug, os.O_CREATE|os.O_WRONLY, 0644)
+		upstreamDebugFile, err = os.OpenFile(*upstreamDataDebug, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -74,10 +74,9 @@ func main() {
 	log.Println("Proxy will advertise itself as", s.Domain)
 	log.Println("Verbose SMTP conversation logging:", *verboseOpt)
 
-	if *serverDebug != "" {
-		// Need local ref to the file, to allow Close() and Name() methods which io.Writer doesn't have
-		// Overwrite each time
-		dbgFile, err := os.OpenFile(*serverDebug, os.O_CREATE|os.O_WRONLY, 0644)
+	// Logging of downstream (client to proxy server) commands and responses
+	if *downstreamDebug != "" {
+		dbgFile, err := os.OpenFile(*downstreamDebug, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
 			log.Fatal(err)
 		}
