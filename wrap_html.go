@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/mail"
 	"net/url"
 	"path"
 
@@ -47,10 +48,7 @@ func NewWrapper(URL string) (*Wrapper, error) {
 	if u.RawQuery != "" {
 		return nil, errors.New("Can't have query parameters in the tracking URL")
 	}
-	// Valid - recompose into a canonical form URL, with trailing /
-	trk := Wrapper{
-		URL: *u,
-	}
+	trk := Wrapper{URL: *u}
 	return &trk, nil
 }
 
@@ -58,6 +56,30 @@ func NewWrapper(URL string) (*Wrapper, error) {
 func (trk *Wrapper) SetMessageInfo(msgID string, rcpt string) {
 	trk.messageID = msgID
 	trk.rcptTo = rcpt
+}
+
+// ProcessMessageHeaders reads the message's current headers and updates/inserts any new ones required
+func (trk *Wrapper) ProcessMessageHeaders(h mail.Header) error {
+	const sparkPostMessageIDHeader = "X-Sp-Subaccount-Id"
+	rcpts, err := h.AddressList("to")
+	if err != nil {
+		return err
+	}
+	ccs, _ := h.AddressList("cc") // ignore "mail:header not in message" error return as it's expected
+	bccs, _ := h.AddressList("bcc")
+
+	if len(rcpts) != 1 || len(ccs) != 0 || len(bccs) != 0 {
+		// Multiple recipients (to, cc, bcc) would require the html to be encoded for EACH recipient and exploded into n messages, which is TODO.
+		return errors.New("This tracking implementation is designed for simple single-recipient messages only, sorry")
+	}
+	// See if we already have a message ID header; otherwise generate and add it
+	uniq := h.Get(sparkPostMessageIDHeader)
+	if uniq == "" {
+		uniq = UniqMessageID()
+		h[sparkPostMessageIDHeader] = []string{uniq} // Add unique value into the message headers for PowerMTA / Signals to process
+	}
+	trk.SetMessageInfo(uniq, rcpts[0].Address)
+	return nil
 }
 
 // InitialOpenPixel returns an html fragment with pixel for initial open tracking.
