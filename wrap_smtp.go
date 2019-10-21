@@ -15,19 +15,21 @@ import (
 
 // The Backend implements SMTP server methods.
 type Backend struct {
-	outHostPort       string
-	verbose           bool
-	upstreamDataDebug *os.File
-	wrapper           *Wrapper
+	outHostPort        string
+	verbose            bool
+	upstreamDataDebug  *os.File
+	wrapper            *Wrapper
+	insecureSkipVerify bool
 }
 
 // NewBackend init function
-func NewBackend(outHostPort string, verbose bool, upstreamDataDebug *os.File, wrapper *Wrapper) *Backend {
+func NewBackend(outHostPort string, verbose bool, upstreamDataDebug *os.File, wrapper *Wrapper, insecureSkipVerify bool) *Backend {
 	b := Backend{
-		outHostPort:       outHostPort,
-		verbose:           verbose,
-		upstreamDataDebug: upstreamDataDebug,
-		wrapper:           wrapper,
+		outHostPort:        outHostPort,
+		verbose:            verbose,
+		upstreamDataDebug:  upstreamDataDebug,
+		wrapper:            wrapper,
+		insecureSkipVerify: insecureSkipVerify,
 	}
 	return &b
 }
@@ -38,6 +40,10 @@ func (bkd *Backend) logger(args ...interface{}) {
 	}
 }
 
+func (bkd *Backend) loggerAlways(args ...interface{}) {
+	log.Println(args...)
+}
+
 // Init the backend. Here we establish the upstream connection
 func (bkd *Backend) Init() (smtpproxy.Session, error) {
 	var s Session
@@ -46,7 +52,7 @@ func (bkd *Backend) Init() (smtpproxy.Session, error) {
 	s.bkd = bkd    // just for logging
 	s.upstream = c // keep record of the upstream Client connection
 	if err != nil {
-		bkd.logger(respTwiddle(&s), "Connection error", bkd.outHostPort, err)
+		bkd.loggerAlways(respTwiddle(&s), "Connection error", bkd.outHostPort, err.Error())
 	}
 	bkd.logger(respTwiddle(&s), "Connection success", bkd.outHostPort)
 	return &s, nil
@@ -88,7 +94,12 @@ func (s *Session) Greet(helotype string) ([]string, int, string, error) {
 	host, _, _ := net.SplitHostPort(s.bkd.outHostPort)
 	code, msg, err = s.upstream.Hello(host)
 	if err != nil {
-		s.bkd.logger(respTwiddle(s), helotype, "error", err)
+		s.bkd.loggerAlways(respTwiddle(s), helotype, "error", err.Error())
+		if code == 0 {
+			// some errors don't show up in (code,msg) e.g. TLS cert errors, so map as a specific SMTP code/msg response
+			code = 599
+			msg = err.Error()
+		}
 		return nil, code, msg, err
 	}
 	s.bkd.logger(respTwiddle(s), helotype, "success")
@@ -102,12 +113,16 @@ func (s *Session) StartTLS() (int, string, error) {
 	host, _, _ := net.SplitHostPort(s.bkd.outHostPort)
 	// Try the upstream server, it will report error if unsupported
 	tlsconfig := &tls.Config{
-		InsecureSkipVerify: false,
+		InsecureSkipVerify: s.bkd.insecureSkipVerify,
 		ServerName:         host,
 	}
 	s.bkd.logger(cmdTwiddle(s), "STARTTLS")
 	code, msg, err := s.upstream.StartTLS(tlsconfig)
-	s.bkd.logger(respTwiddle(s), code, msg)
+	if err != nil {
+		s.bkd.loggerAlways(respTwiddle(s), code, msg)
+	} else {
+		s.bkd.logger(respTwiddle(s), code, msg)
+	}
 	return code, msg, err
 }
 
@@ -149,7 +164,16 @@ func (s *Session) Passthru(expectcode int, cmd, arg string) (int, string, error)
 		joined = cmd + " " + arg
 	}
 	code, msg, err := s.upstream.MyCmd(expectcode, joined)
-	s.bkd.logger(respTwiddle(s), code, msg)
+	if err != nil {
+		s.bkd.loggerAlways(respTwiddle(s), cmd, code, msg, "error", err.Error())
+		if code == 0 {
+			// some errors don't show up in (code,msg) e.g. TLS cert errors, so map as a specific SMTP code/msg response
+			code = 599
+			msg = err.Error()
+		}
+	} else {
+		s.bkd.logger(respTwiddle(s), code, msg)
+	}
 	return code, msg, err
 }
 
@@ -158,7 +182,7 @@ func (s *Session) DataCommand() (io.WriteCloser, int, string, error) {
 	s.bkd.logger(cmdTwiddle(s), "DATA")
 	w, code, msg, err := s.upstream.Data()
 	if err != nil {
-		s.bkd.logger(respTwiddle(s), "DATA error", err)
+		s.bkd.loggerAlways(respTwiddle(s), "DATA error", err)
 	}
 	return w, code, msg, err
 }
@@ -174,14 +198,14 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	bytesWritten, err := smtpproxy.MailCopy(w2, r, s.bkd.wrapper) // Pass in the engagement tracking info
 	if err != nil {
 		msg := "DATA io.Copy error"
-		s.bkd.logger(respTwiddle(s), msg, err)
+		s.bkd.loggerAlways(respTwiddle(s), msg, err)
 		return 0, msg, err
 	}
 	err = w.Close()
 	code := s.upstream.DataResponseCode
 	msg := s.upstream.DataResponseMsg
 	if err != nil {
-		s.bkd.logger(respTwiddle(s), "DATA Close error", err, ", bytes written =", bytesWritten)
+		s.bkd.loggerAlways(respTwiddle(s), "DATA Close error", err, ", bytes written =", bytesWritten)
 	} else {
 		s.bkd.logger(respTwiddle(s), "DATA accepted, bytes written =", bytesWritten)
 		s.bkd.logger(respTwiddle(s), code, msg)

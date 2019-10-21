@@ -22,6 +22,7 @@ func main() {
 	downstreamDebug := flag.String("downstream_debug", "", "File to write downstream server SMTP conversation for debugging")
 	upstreamDataDebug := flag.String("upstream_data_debug", "", "File to write upstream DATA for debugging")
 	wrapURL := flag.String("engagement_url", "", "Engagement tracking URL used in html email body for opens and clicks")
+	insecureSkipVerify := flag.Bool("insecure_skip_verify", false, "Skip check of peer cert on upstream side")
 	flag.Parse()
 
 	log.Println("Incoming host:port set to", *inHostPort)
@@ -40,18 +41,17 @@ func main() {
 	}
 
 	var myWrapper *spmta.Wrapper // Will be nil if not using engagement tracking
-	if *wrapURL == "" {
-		log.Println("Engagement tracking not active", *wrapURL)
-	} else {
-		log.Println("Engagement tracking URL:", *wrapURL)
-		myWrapper, err = spmta.NewWrapper(*wrapURL)
-		if err != nil {
-			log.Fatal(err)
-		}
+
+	log.Println("Engagement tracking URL:", *wrapURL)
+	myWrapper, err = spmta.NewWrapper(*wrapURL)
+	if err != nil && err.Error() != "parse : empty url" {
+		log.Fatal(err)
 	}
 
+	log.Println("insecure_skip_verify (Skip check of peer cert on upstream side):", *insecureSkipVerify)
+
 	// Set up parameters that the backend will use
-	be := spmta.NewBackend(*outHostPort, *verboseOpt, upstreamDebugFile, myWrapper)
+	be := spmta.NewBackend(*outHostPort, *verboseOpt, upstreamDebugFile, myWrapper, *insecureSkipVerify)
 	s := smtpproxy.NewServer(be)
 	s.Addr = *inHostPort
 	s.ReadTimeout = 60 * time.Second

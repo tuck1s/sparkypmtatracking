@@ -142,9 +142,132 @@ size, Ingest API response and Batch ID are logged.
 
 ## wrapper
 
-TODO
+SMTP proxy that accepts incoming messages from your downstream client, applies engagement-tracking (wrapping links and adding open tracking pixels) and relays on to an upstream server.
 
-### Starting these applications on boot
+TLS with your own local certificate/private key is supported. Each phase of the SMTP conversation, including STARTTLS connection negotiation with the upstream server, proceeds in step with your client requests.
+
+Usage is shown with `-h`, for example `cmd/wrapper/wrapper -h`
+```
+Usage of cmd/wrapper/wrapper:
+  -certfile string
+        Certificate file for this server
+  -downstream_debug string
+        File to write downstream server SMTP conversation for debugging
+  -engagement_url string
+        Engagement tracking URL used in html email body for opens and clicks
+  -in_hostport string
+        Port number to serve incoming SMTP requests (default "localhost:587")
+  -insecure_skip_verify
+        Skip check of peer cert on upstream side
+  -out_hostport string
+        host:port for onward routing of SMTP requests (default "smtp.sparkpostmail.com:587")
+  -privkeyfile string
+        Private key file for this server
+  -upstream_data_debug string
+        File to write upstream DATA for debugging
+  -verbose
+        print out lots of messages
+```
+
+Example:
+
+```bash
+cmd/wrapper/wrapper -in_hostport :5587 -out_hostport pmta.signalsdemo.trymsys.net:587 -privkeyfile privkey.pem -certfile fullchain.pem -downstream_debug debug_downstream.log -upstream_data_debug debug_upstream.eml --insecure_skip_verify
+```
+
+Localhost port 5587 now accepts incoming SMTP messages. You can now submit messages using e.g. `swaks`
+
+```
+swaks --server 127.0.0.1:5587 --auth-user SMTP_Injection --auth-pass ##your password here## --to bob.lumreeker@gmail.com --from proxytest@pmta.signalsdemo.trymsys.net --tls --data ../sparkySMTPProxy/test-emails/messenger-tracked.eml 
+```
+
+Startup messages are logged to `wrapper.log`, with a line written each time a message is processed.
+
+```log
+2019/10/21 20:12:10 Incoming host:port set to :5587
+2019/10/21 20:12:10 Outgoing host:port set to pmta.signalsdemo.trymsys.net:587
+2019/10/21 20:12:10 Proxy writing upstream DATA to debug_upstream.eml
+2019/10/21 20:12:10 Engagement tracking URL: 
+2019/10/21 20:12:10 insecure_skip_verify (Skip check of peer cert on upstream side): true
+2019/10/21 20:12:10 Gathered certificate fullchain.pem and key privkey.pem
+2019/10/21 20:12:10 Proxy will advertise itself as smtp.proxy.trymsys.net
+2019/10/21 20:12:10 Verbose SMTP conversation logging: false
+2019/10/21 20:12:10 Proxy logging SMTP commands, responses and downstream DATA to debug_downstream.log
+```
+
+In default (non-verbose) mode, the line `Message Data upstream` shows the upstream message size (bytes), upstream server SMTP response code and text.
+
+```log
+2019/10/21 20:12:16 Message DATA upstream,49496,250,2.6.0 message received
+```
+
+In verbose mode, logfile shows downstream and upstream SMTP conversation traces, in a similar manner to the progress messages shown by `swaks` 
+
+```log
+2019/10/21 21:40:21 ---Connecting upstream
+2019/10/21 21:40:22 	<- Connection success pmta.signalsdemo.trymsys.net:587
+2019/10/21 21:40:22 -> EHLO
+2019/10/21 21:40:22 	<- EHLO success
+2019/10/21 21:40:22 	Upstream capabilities: [8BITMIME AUTH CRAM-MD5 AUTH=CRAM-MD5 CHUNKING DSN ENHANCEDSTATUSCODES PIPELINING SIZE 0 SMTPUTF8 STARTTLS VERP XACK]
+2019/10/21 21:40:22 -> STARTTLS
+2019/10/21 21:40:22 	<~ 220 2.0.0 ready to start TLS
+2019/10/21 21:40:22 ~> EHLO
+2019/10/21 21:40:23 	<~ EHLO success
+2019/10/21 21:40:23 	Upstream capabilities: [8BITMIME AUTH CRAM-MD5 PLAIN LOGIN AUTH=CRAM-MD5 PLAIN LOGIN CHUNKING DSN ENHANCEDSTATUSCODES PIPELINING SIZE 0 SMTPUTF8 VERP XACK]
+2019/10/21 21:40:23 ~> AUTH PLAIN xyzzy=
+2019/10/21 21:40:23 	<~ 235 2.7.0 authentication succeeded
+2019/10/21 21:40:23 ~> MAIL FROM:<proxytest@pmta.signalsdemo.trymsys.net>
+2019/10/21 21:40:23 	<~ 250 2.1.0 MAIL ok
+2019/10/21 21:40:23 ~> RCPT TO:<bob.lumreeker@gmail.com>
+2019/10/21 21:40:23 	<~ 250 2.1.5 <bob.lumreeker@gmail.com> ok
+2019/10/21 21:40:23 ~> DATA
+2019/10/21 21:40:24 	<~ DATA accepted, bytes written = 49496
+2019/10/21 21:40:24 	<~ 250 2.6.0 message received
+2019/10/21 21:40:24 ~> QUIT 
+2019/10/21 21:40:25 	<~ 221 2.0.0 pmta.signalsdemo.trymsys.net says goodbye
+```
+
+### STARTTLS and certificates
+
+STARTTLS support for your downstream client requires:
+- a pair of files, containing matching public certificate & private keys, for your  proxy domain, in `.pem` format;
+- an upstream host that supports STARTTLS;
+- specify these files using the `-privkeyfile` and `-certfile` command line flags.
+
+The proxy simply passes SMTP options from the upstream server connection to the downstream client.
+Your client, of course, can choose whether to proceed with a plain (insecure) connection or not.
+
+If you have no certificates for your proxy domain, then omit the `-privkeyfile` and `-certfile` flags. 
+
+### Upstream server certificate validity
+
+The proxy TLS library checks validity of upstream certificates used with TLS.
+If your upstream server has a self-signed, or otherwise invalid certificate, you'll see
+
+```log
+2019/10/21 21:37:03 	<~ EHLO error x509: certificate is valid for ip-172-31-25-101.us-west-2.compute.internal, localhost, not pmta.signalsdemo.trymsys.net
+```
+Proper solution: install a valid certificate on your upstream server.
+
+Workaround: you can use the `-insecure_skip_verify` flag to make the proxy tolerant of your upstream server cert.
+
+### downstream_debug
+
+This option captures the entire conversation on the downstream (client) side, including SMTP cmmands and responses and the DATA phase containing message headers and body.
+
+The file is created afresh each time the program is started (i.e. not appended to).
+Use with caution as debug files can get large.
+
+### upstream_data_debug
+
+This option captures the DATA phase on the upstream (server) side, containing message headers and body. When engagement tracking is being used, the upstream content will be different to the downstream content as a header is added, links are tracked, and open pixels added.
+
+The file is created afresh each time the program is started (i.e. not appended to).
+Use with caution as debug files can get large.
+
+----
+
+## Starting these applications on boot
 Script `start.sh` is provided for this purpose. You can make it run on boot using
 ```
 crontab cronfile

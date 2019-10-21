@@ -53,13 +53,15 @@ func NewWrapper(URL string) (*Wrapper, error) {
 }
 
 // SetMessageInfo sets the per-message specifics
-func (trk *Wrapper) SetMessageInfo(msgID string, rcpt string) {
-	trk.messageID = msgID
-	trk.rcptTo = rcpt
+func (wrap *Wrapper) SetMessageInfo(msgID string, rcpt string) {
+	if wrap != nil {
+		wrap.messageID = msgID
+		wrap.rcptTo = rcpt
+	}
 }
 
 // ProcessMessageHeaders reads the message's current headers and updates/inserts any new ones required
-func (trk *Wrapper) ProcessMessageHeaders(h mail.Header) error {
+func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
 	const sparkPostMessageIDHeader = "X-Sp-Subaccount-Id"
 	rcpts, err := h.AddressList("to")
 	if err != nil {
@@ -78,48 +80,48 @@ func (trk *Wrapper) ProcessMessageHeaders(h mail.Header) error {
 		uniq = UniqMessageID()
 		h[sparkPostMessageIDHeader] = []string{uniq} // Add unique value into the message headers for PowerMTA / Signals to process
 	}
-	trk.SetMessageInfo(uniq, rcpts[0].Address)
+	wrap.SetMessageInfo(uniq, rcpts[0].Address)
 	return nil
 }
 
 // InitialOpenPixel returns an html fragment with pixel for initial open tracking.
 // If there are problems, empty string is returned.
-func (trk *Wrapper) InitialOpenPixel() string {
+func (wrap *Wrapper) InitialOpenPixel() string {
 	const pixelPrefix = `<div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px` +
 		`;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="`
 	const pixelSuffix = `"/></div>` + "\n"
-	if trk.URL.String() == "" {
+	if wrap.URL.String() == "" {
 		return ""
 	}
-	return pixelPrefix + trk.wrap("i", "") + pixelSuffix
+	return pixelPrefix + wrap.wrap("i", "") + pixelSuffix
 }
 
 // OpenPixel returns an html fragment with pixel for bottom open tracking.
 // If there are problems, empty string is returned.
-func (trk *Wrapper) OpenPixel() string {
+func (wrap *Wrapper) OpenPixel() string {
 	const pixelPrefix = `<img border="0" width="1" height="1" alt="" src="`
 	const pixelSuffix = `">` + "\n"
-	if trk.URL.String() == "" {
+	if wrap.URL.String() == "" {
 		return ""
 	}
-	return pixelPrefix + trk.wrap("o", "") + pixelSuffix
+	return pixelPrefix + wrap.wrap("o", "") + pixelSuffix
 }
 
 // WrapURL returns the wrapped, encoded version of the URL for engagement tracking.
 // If there are problems, the original unwrapped url is returned.
-func (trk *Wrapper) WrapURL(url string) string {
-	if trk.URL.String() == "" {
+func (wrap *Wrapper) WrapURL(url string) string {
+	if wrap.URL.String() == "" {
 		return url
 	}
-	return trk.wrap("c", url)
+	return wrap.wrap("c", url)
 }
 
-func (trk *Wrapper) wrap(action string, targetlink string) string {
+func (wrap *Wrapper) wrap(action string, targetlink string) string {
 	pathData, err := json.Marshal(WrapperData{
 		Action:        action,
 		TargetLinkURL: targetlink,
-		MessageID:     trk.messageID,
-		RcptTo:        trk.rcptTo,
+		MessageID:     wrap.messageID,
+		RcptTo:        wrap.rcptTo,
 	})
 	if err != nil {
 		return ""
@@ -134,20 +136,25 @@ func (trk *Wrapper) wrap(action string, targetlink string) string {
 	if err = zw.Close(); err != nil {
 		return ""
 	}
-	pj := path.Join(trk.URL.Path, b64Z.String())
+	pj := path.Join(wrap.URL.Path, b64Z.String())
 	u := url.URL{ // make a local copy so we don't change the parent
-		Scheme: trk.URL.Scheme,
-		Host:   trk.URL.Host,
+		Scheme: wrap.URL.Scheme,
+		Host:   wrap.URL.Host,
 		Path:   pj,
 	}
 	return u.String()
 }
 
 // TrackHTML streams content to w from r (a la io.Copy), adding engagement tracking by wrapping links and inserting open pixel(s).
-//Returns count of bytes written and error status
-func (trk *Wrapper) TrackHTML(w io.Writer, r io.Reader) (int, error) {
+// Returns count of bytes written and error status
+// If the wrapping is inactive, just do a copy
+func (wrap *Wrapper) TrackHTML(w io.Writer, r io.Reader) (int, error) {
 	var count, c int
 	var err error
+	if wrap == nil {
+		w64, err := io.Copy(w, r) // wrapping inactive, just do a copy
+		return int(w64), err
+	}
 	tok := html.NewTokenizer(r)
 	for {
 		tokType := tok.Next()
@@ -155,7 +162,7 @@ func (trk *Wrapper) TrackHTML(w io.Writer, r io.Reader) (int, error) {
 		case html.ErrorToken:
 			err = tok.Err()
 			if err == io.EOF {
-				return count, nil //end of the file, normal exit
+				return count, nil // end of the file, normal exit
 			}
 		case html.StartTagToken:
 			token := tok.Token()
@@ -163,7 +170,7 @@ func (trk *Wrapper) TrackHTML(w io.Writer, r io.Reader) (int, error) {
 				for k, v := range token.Attr {
 					if v.Key == "href" {
 						// We have an anchor with hyperlink - rewrite the URL back into parent structure
-						token.Attr[k].Val = trk.WrapURL(v.Val)
+						token.Attr[k].Val = wrap.WrapURL(v.Val)
 					}
 				}
 				c, err = io.WriteString(w, token.String())
@@ -172,7 +179,7 @@ func (trk *Wrapper) TrackHTML(w io.Writer, r io.Reader) (int, error) {
 				if token.Data == "body" {
 					c, err = w.Write(tok.Raw())
 					count += c
-					c, err = io.WriteString(w, trk.InitialOpenPixel()) // top tracking pixel
+					c, err = io.WriteString(w, wrap.InitialOpenPixel()) // top tracking pixel
 					count += c
 				} else {
 					c, err = w.Write(tok.Raw()) // pass through
@@ -182,7 +189,7 @@ func (trk *Wrapper) TrackHTML(w io.Writer, r io.Reader) (int, error) {
 		case html.EndTagToken:
 			token := tok.Token()
 			if token.Data == "body" {
-				c, err = io.WriteString(w, trk.OpenPixel()) // bottom tracking pixel
+				c, err = io.WriteString(w, wrap.OpenPixel()) // bottom tracking pixel
 				count += c
 				c, err = w.Write(tok.Raw())
 				count += c
