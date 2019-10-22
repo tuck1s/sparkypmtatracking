@@ -13,17 +13,18 @@ import (
 )
 
 func main() {
-	//spmta.MyLogger("wrapper.log")
 	inHostPort := flag.String("in_hostport", "localhost:587", "Port number to serve incoming SMTP requests")
 	outHostPort := flag.String("out_hostport", "smtp.sparkpostmail.com:587", "host:port for onward routing of SMTP requests")
 	certfile := flag.String("certfile", "", "Certificate file for this server")
 	privkeyfile := flag.String("privkeyfile", "", "Private key file for this server")
+	logfile := flag.String("logfile", "", "File written with message logs (also to stdout)")
 	verboseOpt := flag.Bool("verbose", false, "print out lots of messages")
 	downstreamDebug := flag.String("downstream_debug", "", "File to write downstream server SMTP conversation for debugging")
 	upstreamDataDebug := flag.String("upstream_data_debug", "", "File to write upstream DATA for debugging")
 	wrapURL := flag.String("engagement_url", "", "Engagement tracking URL used in html email body for opens and clicks")
 	insecureSkipVerify := flag.Bool("insecure_skip_verify", false, "Skip check of peer cert on upstream side")
 	flag.Parse()
+	spmta.MyLogger(*logfile)
 
 	log.Println("Incoming host:port set to", *inHostPort)
 	log.Println("Outgoing host:port set to", *outHostPort)

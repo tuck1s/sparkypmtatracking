@@ -182,7 +182,7 @@ func (s *Session) DataCommand() (io.WriteCloser, int, string, error) {
 	s.bkd.logger(cmdTwiddle(s), "DATA")
 	w, code, msg, err := s.upstream.Data()
 	if err != nil {
-		s.bkd.loggerAlways(respTwiddle(s), "DATA error", err)
+		s.bkd.loggerAlways(respTwiddle(s), "DATA error", err.Error())
 	}
 	return w, code, msg, err
 }
@@ -198,7 +198,7 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	bytesWritten, err := smtpproxy.MailCopy(w2, r, s.bkd.wrapper) // Pass in the engagement tracking info
 	if err != nil {
 		msg := "DATA io.Copy error"
-		s.bkd.loggerAlways(respTwiddle(s), msg, err)
+		s.bkd.loggerAlways(respTwiddle(s), msg, err.Error())
 		return 0, msg, err
 	}
 	err = w.Close()

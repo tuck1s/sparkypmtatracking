@@ -2,6 +2,7 @@ package sparkypmtatracking
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"strings"
@@ -22,11 +23,15 @@ func ConsoleAndLogFatal(s ...interface{}) {
 	log.Fatalln(s...)
 }
 
-// MyLogger sets a custom logger
+// MyLogger sets up a custom logger, if filename is given, emitting to stdout as well
+// If filename is blank string, then output is stdout only
 func MyLogger(filename string) {
-	logfile, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-	Check(err)
-	log.SetOutput(logfile)
+	if filename != "" {
+		logfile, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+		Check(err)
+		mw := io.MultiWriter(os.Stdout, logfile)
+		log.SetOutput(mw)
+	}
 }
 
 // GetenvDefault returns an environment variable, with default if unset

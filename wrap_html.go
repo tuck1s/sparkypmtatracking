@@ -62,7 +62,7 @@ func (wrap *Wrapper) SetMessageInfo(msgID string, rcpt string) {
 
 // ProcessMessageHeaders reads the message's current headers and updates/inserts any new ones required
 func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
-	const sparkPostMessageIDHeader = "X-Sp-Subaccount-Id"
+	const sparkPostMessageIDHeader = "X-Sp-Message-Id"
 	rcpts, err := h.AddressList("to")
 	if err != nil {
 		return err
