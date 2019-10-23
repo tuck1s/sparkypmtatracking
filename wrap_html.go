@@ -84,6 +84,11 @@ func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
 	return nil
 }
 
+// Active returns bool when wrapping/tracking is active.
+func (wrap *Wrapper) Active() bool {
+	return wrap != nil
+}
+
 // InitialOpenPixel returns an html fragment with pixel for initial open tracking.
 // If there are problems, empty string is returned.
 func (wrap *Wrapper) InitialOpenPixel() string {
@@ -151,10 +156,6 @@ func (wrap *Wrapper) wrap(action string, targetlink string) string {
 func (wrap *Wrapper) TrackHTML(w io.Writer, r io.Reader) (int, error) {
 	var count, c int
 	var err error
-	if wrap == nil {
-		w64, err := io.Copy(w, r) // wrapping inactive, just do a copy
-		return int(w64), err
-	}
 	tok := html.NewTokenizer(r)
 	for {
 		tokType := tok.Next()

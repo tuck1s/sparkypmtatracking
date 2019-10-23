@@ -197,7 +197,7 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	}
 	bytesWritten, err := smtpproxy.MailCopy(w2, r, s.bkd.wrapper) // Pass in the engagement tracking info
 	if err != nil {
-		msg := "DATA io.Copy error"
+		msg := "DATA MailCopy error"
 		s.bkd.loggerAlways(respTwiddle(s), msg, err.Error())
 		return 0, msg, err
 	}

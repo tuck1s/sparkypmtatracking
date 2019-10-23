@@ -125,6 +125,10 @@ In verbose mode, logfile shows downstream and upstream SMTP conversation traces,
 2019/10/21 21:40:25 	<~ 221 2.0.0 pmta.signalsdemo.trymsys.net says goodbye
 ```
 
+### Interfaces to listen on
+
+Note that `-in_hostport localhost:587` accepts traffic sources only from the local machine. To accept traffic on all network interfaces, use `-in_hostport 0.0.0.0:587`.
+
 ### STARTTLS and certificates
 
 STARTTLS support for your downstream client requires:
@@ -162,6 +166,14 @@ This option captures the DATA phase on the upstream (server) side, containing me
 
 The file is created afresh each time the program is started (i.e. not appended to).
 Use with caution as debug files can get large.
+
+### example email files
+
+Some example `.eml` content can be used to send through the wrapper proxy with `swaks`:
+ 
+```bash
+swaks --server localhost:5587 --auth-user SMTP_Injection --auth-pass YOUR_KEY_HERE --to bob.lumreeker@gmail.com --from proxy@email.thetucks.com --data example2.eml --tls
+``` 
 
 ---
 
