@@ -2,7 +2,6 @@ package sparkypmtatracking
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"os"
 	"strings"
@@ -29,8 +28,7 @@ func MyLogger(filename string) {
 	if filename != "" {
 		logfile, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
 		Check(err)
-		mw := io.MultiWriter(os.Stdout, logfile)
-		log.SetOutput(mw)
+		log.SetOutput(logfile)
 	}
 }
 

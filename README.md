@@ -172,7 +172,7 @@ Use with caution as debug files can get large.
 Some example `.eml` content can be used to send through the wrapper proxy with `swaks`:
  
 ```bash
-swaks --server localhost:5587 --auth-user SMTP_Injection --auth-pass YOUR_KEY_HERE --to bob.lumreeker@gmail.com --from proxy@email.thetucks.com --data example2.eml --tls
+swaks --server smtp.proxy.trymsys.net:587 --auth-user SMTP_Injection --auth-pass YOUR_KEY_HERE --to bob.lumreeker@gmail.com --from via_proxy@email.thetucks.com --data example2.eml --tls
 ``` 
 
 ---
