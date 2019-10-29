@@ -8,8 +8,12 @@ cmd/tracker/__debug_bin
 cmd/feeder/__debug_bin
 cmd/wrapper/__debug_bin
 .DS_Store
-cmd/wrapper/wrapper
 debug*.eml
 debug*.txt
 *.pem
 c.out
+# exclude local build binaries
+acct_etl
+feeder
+tracker
+wrapper
