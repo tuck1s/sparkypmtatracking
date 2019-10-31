@@ -1,15 +1,5 @@
 package sparkypmtatracking
 
-// TrackEvent data passed in this project's tracking URLs (and in the Redis event queue)
-type TrackEvent struct {
-	Type          string `json:"type"` // added from the URL literal path
-	TargetLinkURL string `json:"target_link_url"`
-	MessageID     string `json:"x_sp_message_id"`
-	TimeStamp     string `json:"timestamp"`
-	UserAgent     string `json:"user_agent"`
-	IPAddress     string `json:"ip_address"`
-}
-
 // SparkPostEvent structure for SparkPost Ingest API. Note the nesting. There are some fields we're not populating:
 // ab_test_id, ab_test_version, injection_time, ip_address, ip_pool, msg_size, num_retries, queue_time,
 // raw_rcpt_to, rcpt_type, sending_ip, subaccount_id, target_link_name, template_id, template_version, transactional,

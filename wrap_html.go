@@ -32,7 +32,7 @@ type WrapperData struct {
 	RcptTo        string `json:"rcpt"`
 }
 
-// Wrapper information set up as the message is processed
+// Wrapper carries the per-message information as each message is processed
 type Wrapper struct {
 	URL       url.URL
 	messageID string // This info is set up per message
@@ -122,12 +122,13 @@ func (wrap *Wrapper) WrapURL(url string) string {
 }
 
 func (wrap *Wrapper) wrap(action string, targetlink string) string {
-	pathData, err := json.Marshal(WrapperData{
+	wd := WrapperData{
 		Action:        action,
 		TargetLinkURL: targetlink,
 		MessageID:     wrap.messageID,
 		RcptTo:        wrap.rcptTo,
-	})
+	}
+	pathData, err := json.Marshal(wd)
 	if err != nil {
 		return ""
 	}
