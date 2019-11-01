@@ -5,10 +5,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/binary"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
-	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
@@ -28,16 +27,9 @@ func uniqEventID() string {
 	return strconv.FormatUint(num, 10)
 }
 
-// Make a SparkPost formatted unique message_id, which needs to be a hex string
-func uniqMessageID() string {
-	u := uuid.New()
-	h := hex.EncodeToString(u[:12])
-	return strings.ToUpper(h)
-}
-
 // For efficiency under load, collect n events into a batch
 const ingestBatchSize = 1000
-const ingestMaxWait = 10 * time.Second
+const ingestMaxWait = 60 * time.Second
 
 func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent, error) {
 	var tev spmta.TrackEvent
@@ -62,7 +54,7 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent
 		enrichment := make(map[string]string)
 		err = json.Unmarshal([]byte(enrichmentJSON), &enrichment)
 		if err != nil {
-			log.Println(err.Error())
+			return spEvent, err
 		}
 		eptr.MsgFrom = enrichment["orig"]
 		eptr.RcptTo = enrichment["rcpt"]
@@ -86,9 +78,8 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent
 }
 
 // Prepare a batch of TrackingEvents for ingest to SparkPost.
-func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey string) {
-	var ingestData bytes.Buffer
-	ingestData.Grow(1024 * len(batch)) // Preallocate approx size of the string for efficiency
+func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey string) error {
+	ingestData := make([]byte, 0, 5*1024*1024)
 	for _, eStr := range batch {
 		e, err := makeSparkPostEvent(eStr, client)
 		if err != nil {
@@ -100,47 +91,58 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 			log.Println(err.Error())
 			continue // with next event, if we can
 		}
-		ingestData.Write(eJSON)
-		ingestData.WriteString("\n")
+		ingestData = append(ingestData, eJSON...)
+		ingestData = append(ingestData, byte('\n'))
 	}
-
-	// Now have ingestData in buffer - flow through gzip writer
+	// Now have ingestData ndJSON in byte slice form - gzip compress
 	var zbuf bytes.Buffer
-	ir := bufio.NewReader(&ingestData)
 	zw := gzip.NewWriter(&zbuf)
-	_, err := io.Copy(zw, ir)
-	spmta.Check(err)
+	_, err := zw.Write(ingestData)
+	if err != nil {
+		return err
+	}
 	err = zw.Close() // ensure all data written (seems to be necessary)
-	spmta.Check(err)
+	if err != nil {
+		return err
+	}
 	gzipSize := zbuf.Len()
 
-	// Prepare the https POST request
+	// Prepare the https POST request. We have to supply a Reader for this, hence needing to realize the stream via zbuf
 	zr := bufio.NewReader(&zbuf)
 	var netClient = &http.Client{
 		Timeout: time.Second * 300,
 	}
 	url := host + "/api/v1/ingest/events"
 	req, err := http.NewRequest("POST", url, zr)
-	spmta.Check(err)
+	if err != nil {
+		return err
+	}
 	req.Header = map[string][]string{
 		"Authorization":    {apiKey},
 		"Content-Type":     {"application/x-ndjson"},
 		"Content-Encoding": {"gzip"},
 	}
 	res, err := netClient.Do(req)
-	spmta.Check(err)
-
+	if err != nil {
+		return err
+	}
+	// Response body is a Reader; read it into []byte
+	responseBody, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return err
+	}
 	var resObj spmta.IngestResult
-	respRd := json.NewDecoder(res.Body)
-	err = respRd.Decode(&resObj)
-	spmta.Check(err)
-	log.Println("Uploaded", len(batch), "events", gzipSize, "bytes (gzip), SparkPost Ingest response:", res.Status, "results.id=", resObj.Results.ID)
+	err = json.Unmarshal(responseBody, &resObj)
+	if err != nil {
+		return err
+	}
+	log.Printf("Uploaded %d events, %d bytes (gzip). SparkPost Ingest response: %s, results.id=%s\n", len(batch), gzipSize, res.Status, resObj.Results.ID)
 	err = res.Body.Close()
-	spmta.Check(err)
+	return err
 }
 
 func main() {
-	logfile := flag.String("logfile", "", "File written with message logs (also to stdout)")
+	logfile := flag.String("logfile", "", "File written with message logs")
 	flag.Parse()
 	spmta.MyLogger(*logfile)
 
@@ -159,7 +161,10 @@ func main() {
 		if err == redis.Nil {
 			// special value means queue is empty. Ingest any data we have collected, then wait a while
 			if len(trackingData) > 0 {
-				sparkPostIngest(trackingData, client, host, apiKey)
+				err = sparkPostIngest(trackingData, client, host, apiKey)
+				if err != nil {
+					log.Println(err.Error())
+				}
 				trackingData = trackingData[:0] // empty the data, but keep capacity allocated
 			}
 			time.Sleep(ingestMaxWait)
@@ -170,7 +175,10 @@ func main() {
 				// stash data away for later. If we have a full batch, SparkPost sparkPostIngest it
 				trackingData = append(trackingData, d)
 				if len(trackingData) >= ingestBatchSize {
-					sparkPostIngest(trackingData, client, host, apiKey)
+					err = sparkPostIngest(trackingData, client, host, apiKey)
+					if err != nil {
+						log.Println(err.Error())
+					}
 					trackingData = trackingData[:0] // empty the data, but keep capacity allocated
 				}
 			}

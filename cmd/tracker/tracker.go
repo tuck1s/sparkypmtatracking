@@ -95,7 +95,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 
 func main() {
 	inHostPort := flag.String("in_hostport", ":8888", "host:port to serve incoming HTTP requests")
-	logfile := flag.String("logfile", "", "File written with message logs (also to stdout)")
+	logfile := flag.String("logfile", "", "File written with message logs")
 	flag.Parse()
 	spmta.MyLogger(*logfile)
 
@@ -106,5 +106,7 @@ func main() {
 		Addr: *inHostPort,
 	}
 	err := server.ListenAndServe()
-	spmta.Check(err)
+	if err != nil {
+		spmta.ConsoleAndLogFatal(err)
+	}
 }

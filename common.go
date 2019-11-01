@@ -9,13 +9,6 @@ import (
 	"github.com/go-redis/redis"
 )
 
-// Check error status, log and try to continue
-func Check(e error) {
-	if e != nil {
-		log.Println(e)
-	}
-}
-
 // ConsoleAndLogFatal writes error to both log and stdout
 func ConsoleAndLogFatal(s ...interface{}) {
 	fmt.Println(s...)
@@ -27,7 +20,9 @@ func ConsoleAndLogFatal(s ...interface{}) {
 func MyLogger(filename string) {
 	if filename != "" {
 		logfile, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-		Check(err)
+		if err != nil {
+			ConsoleAndLogFatal(err)
+		}
 		log.SetOutput(logfile)
 	}
 }
