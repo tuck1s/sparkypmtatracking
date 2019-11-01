@@ -1,5 +1,13 @@
 package sparkypmtatracking
 
+// TrackEvent is the augmented info passed from "tracker" via the Redis event queue to "feeder"
+type TrackEvent struct {
+	WD        WrapperData
+	TimeStamp string `json:"ts"`
+	UserAgent string `json:"ua"`
+	IPAddress string `json:"ip"`
+}
+
 // SparkPostEvent structure for SparkPost Ingest API. Note the nesting. There are some fields we're not populating:
 // ab_test_id, ab_test_version, injection_time, ip_address, ip_pool, msg_size, num_retries, queue_time,
 // raw_rcpt_to, rcpt_type, sending_ip, subaccount_id, target_link_name, template_id, template_version, transactional,

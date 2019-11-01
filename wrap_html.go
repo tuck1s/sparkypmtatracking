@@ -24,6 +24,20 @@ func UniqMessageID() string {
 	return u
 }
 
+// ActionToType maps the short "action" string used in URLs to SparkPost event type
+func ActionToType(a string) string {
+	switch a {
+	case "i":
+		return "initial_open"
+	case "o":
+		return "open"
+	case "c":
+		return "click"
+	default:
+		return ""
+	}
+}
+
 // WrapperData is used to build the tracking URL
 type WrapperData struct {
 	Action        string `json:"act"` // carries "c" = click, "o" = open, "i" = initial open

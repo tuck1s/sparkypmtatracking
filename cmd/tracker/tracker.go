@@ -17,14 +17,6 @@ import (
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
-// TrackEvent is the augmented info passed into the Redis event queue
-type TrackEvent struct {
-	WD        spmta.WrapperData
-	TimeStamp string `json:"ts"`
-	UserAgent string `json:"ua"`
-	IPAddress string `json:"ip"`
-}
-
 // Declare this in package scope, as it's unchanging
 var transparentGif = []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff" +
 	"\xff\xff\xff\x21\xf9\x04\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00" +
@@ -40,7 +32,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	var e TrackEvent
+	var e spmta.TrackEvent
 	e.UserAgent = req.UserAgent() // add user agent
 	e.IPAddress, _, _ = net.SplitHostPort(req.RemoteAddr)
 	t := time.Now().Unix() // add timestamp

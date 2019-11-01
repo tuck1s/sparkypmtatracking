@@ -9,10 +9,10 @@ import (
 	"github.com/go-redis/redis"
 )
 
-// Check error status
+// Check error status, log and try to continue
 func Check(e error) {
 	if e != nil {
-		ConsoleAndLogFatal(e)
+		log.Println(e)
 	}
 }
 

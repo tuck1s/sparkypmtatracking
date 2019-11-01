@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"io"
 	"log"
 	"net/http"
@@ -19,19 +20,6 @@ import (
 	"github.com/go-redis/redis"
 	"github.com/google/uuid"
 )
-
-// Make a fake GeoIP
-func fakeGeoIP() spmta.GeoIP {
-	return spmta.GeoIP{
-		Country:    "US",
-		Region:     "MD",
-		City:       "Columbia",
-		Latitude:   39.1749,
-		Longitude:  -76.8375,
-		Zip:        21046,
-		PostalCode: "21046",
-	}
-}
 
 // Make a SparkPost formatted unique event_id, which needs to be a decimal string 0 .. (2^63-1)
 func uniqEventID() string {
@@ -51,50 +39,50 @@ func uniqMessageID() string {
 const ingestBatchSize = 1000
 const ingestMaxWait = 10 * time.Second
 
-func makeSparkPostEvent(eStr string, client *redis.Client) spmta.SparkPostEvent {
+func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent, error) {
 	var tev spmta.TrackEvent
-	err := json.Unmarshal([]byte(eStr), &tev)
-	spmta.Check(err)
 	var spEvent spmta.SparkPostEvent
+	if err := json.Unmarshal([]byte(eStr), &tev); err != nil {
+		return spEvent, err
+	}
 	// Shortcut pointer to the attribute-carrying leaf object; fill in received attributes
 	eptr := &spEvent.EventWrapper.EventGrouping
-	eptr.Type = tev.Type
-	eptr.TargetLinkURL = tev.TargetLinkURL
-	eptr.MessageID = tev.MessageID
+	eptr.Type = spmta.ActionToType(tev.WD.Action)
+	eptr.TargetLinkURL = tev.WD.TargetLinkURL
+	eptr.MessageID = tev.WD.MessageID
 	eptr.TimeStamp = tev.TimeStamp
 	eptr.UserAgent = tev.UserAgent
 	eptr.IPAddress = tev.IPAddress
 
 	// Enrich with PowerMTA accounting-pipe values, if we have these, from persistent storage
-	tKey := spmta.TrackingPrefix + tev.MessageID
-	enrichmentJSON, err := client.Get(tKey).Result()
-	if err == redis.Nil {
-		spmta.ConsoleAndLogFatal("Error: redis key", tKey, "not found")
+	tKey := spmta.TrackingPrefix + tev.WD.MessageID
+	if enrichmentJSON, err := client.Get(tKey).Result(); err == redis.Nil {
+		log.Println("Warning: redis key", tKey, "not found, url=", tev.WD.TargetLinkURL)
+	} else {
+		enrichment := make(map[string]string)
+		err = json.Unmarshal([]byte(enrichmentJSON), &enrichment)
+		if err != nil {
+			log.Println(err.Error())
+		}
+		eptr.MsgFrom = enrichment["orig"]
+		eptr.RcptTo = enrichment["rcpt"]
+		eptr.CampaignID = enrichment["jobId"]
+		eptr.SendingIP = enrichment["dlvSourceIp"]
+		eptr.IPPool = enrichment["vmtaPool"]
+		eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
 	}
-	enrichment := make(map[string]string)
-	err = json.Unmarshal([]byte(enrichmentJSON), &enrichment)
-	spmta.Check(err)
-	eptr.MsgFrom = enrichment["orig"]
-	eptr.RcptTo = enrichment["rcpt"]
-	eptr.CampaignID = enrichment["jobId"]
-	eptr.SendingIP = enrichment["dlvSourceIp"]
-	eptr.IPPool = enrichment["vmtaPool"]
 
 	// Fill in these fields with default / unique / derived values
 	eptr.DelvMethod = "esmtp"
 	eptr.EventID = uniqEventID()
-	eptr.InitialPixel = false
+	eptr.InitialPixel = true // These settings reflect capability of wrapper function
 	eptr.ClickTracking = true
 	eptr.OpenTracking = true
-	eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
 
 	// Skip these fields for now; you may have information to populate them from your own sources
-	//eptr.GeoIP
-	//eptr.FriendlyFrom
-	//eptr.RcptTags
-	//eptr.RcptMeta
+	//eptr.GeoIP, eptr.FriendlyFrom, eptr.RcptTags, eptr.RcptMeta
 	//eptr.Subject			.. SparkPost doesn't fill this in on Open & Click events
-	return spEvent
+	return spEvent, nil
 }
 
 // Prepare a batch of TrackingEvents for ingest to SparkPost.
@@ -102,9 +90,16 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	var ingestData bytes.Buffer
 	ingestData.Grow(1024 * len(batch)) // Preallocate approx size of the string for efficiency
 	for _, eStr := range batch {
-		e := makeSparkPostEvent(eStr, client)
+		e, err := makeSparkPostEvent(eStr, client)
+		if err != nil {
+			log.Println(err.Error())
+			continue // with next event, if we can
+		}
 		eJSON, err := json.Marshal(e)
-		spmta.Check(err)
+		if err != nil {
+			log.Println(err.Error())
+			continue // with next event, if we can
+		}
 		ingestData.Write(eJSON)
 		ingestData.WriteString("\n")
 	}
@@ -145,15 +140,17 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 }
 
 func main() {
-	// Use logging, as this program will be executed without an attached console
-	spmta.MyLogger("feeder.log")
-	client := spmta.MyRedis()
-	// Get SparkPost ingest credentials from env vars
+	logfile := flag.String("logfile", "", "File written with message logs (also to stdout)")
+	flag.Parse()
+	spmta.MyLogger(*logfile)
+
+	// Get SparkPost ingest info from env vars
 	host := spmta.HostCleanup(spmta.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
 	apiKey := spmta.GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
 	if apiKey == "" {
 		spmta.ConsoleAndLogFatal("SPARKPOST_API_KEY_INGEST not set - stopping")
 	}
+	client := spmta.MyRedis()
 
 	// Process forever data arriving via Redis queue
 	trackingData := make([]string, 0, ingestBatchSize) // Pre-allocate for efficiency
