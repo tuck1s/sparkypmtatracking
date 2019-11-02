@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -44,17 +45,20 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 	b64Reader := base64.NewDecoder(base64.URLEncoding, urlReader)
 	zBytes, err := ioutil.ReadAll(b64Reader)
 	if err != nil {
-		log.Println("ReadAll error", err)
+		log.Println("base64 ReadAll error", err)
+		log.Println(req.URL.Path)
+		log.Println(hex.Dump(zBytes))
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// fmt.Println(hex.Dump(zBytes)) debug
 
 	zReader, err := zlib.NewReader(bytes.NewReader(zBytes))
 	defer zReader.Close()
 	eBytes, err := ioutil.ReadAll(zReader) // []byte representation of JSON
 	if err != nil {
-		log.Println("Warning - ReadAll error", err)
+		log.Println("zlib ReadAll error", err)
+		log.Println(req.URL.Path)
+		log.Println(hex.Dump(zBytes))
 		// w.WriteHeader(http.StatusBadRequest)
 		// return
 	}
