@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -52,12 +51,12 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 	// fmt.Println(hex.Dump(zBytes)) debug
 
 	zReader, err := zlib.NewReader(bytes.NewReader(zBytes))
+	defer zReader.Close()
 	eBytes, err := ioutil.ReadAll(zReader) // []byte representation of JSON
-	fmt.Println(string(eBytes))
-	if err != nil && err != io.ErrUnexpectedEOF {
-		log.Println("ReadAll error", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
+	if err != nil {
+		log.Println("Warning - ReadAll error", err)
+		// w.WriteHeader(http.StatusBadRequest)
+		// return
 	}
 	if err = json.Unmarshal(eBytes, &e.WD); err != nil {
 		log.Println(err)
@@ -75,6 +74,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 	log.Printf("Timestamp %s, IPAddress %s, UserAgent %s, Action %s, URL %s, MsgID %s\n", e.TimeStamp, e.IPAddress, e.UserAgent, e.WD.Action, e.WD.TargetLinkURL, e.WD.MessageID)
 
 	client := spmta.MyRedis()
+	defer client.Close()
 	if _, err = client.RPush(spmta.RedisQueue, eBytes).Result(); err != nil {
 		log.Println("Redis error", err)
 		w.WriteHeader(http.StatusInternalServerError)
