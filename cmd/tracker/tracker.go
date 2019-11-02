@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"compress/zlib"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -26,6 +29,8 @@ var transparentGif = []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff" +
 // where xyzzy = base64 urlsafe encoded, Zlib compressed, []byte
 // These are written to the Redis queue
 func trackingServer(w http.ResponseWriter, req *http.Request) {
+	log.Println(req.URL.Path)
+
 	s := strings.Split(req.URL.Path, "/")
 	if s[0] != "" || len(s) != 2 {
 		log.Println("Incoming URL error:", req.URL.Path)
@@ -41,9 +46,18 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 	// Build a pipeline for base64 decode / zlib decode / json decode
 	urlReader := strings.NewReader(s[1])
 	b64Reader := base64.NewDecoder(base64.URLEncoding, urlReader)
-	zReader, err := zlib.NewReader(b64Reader)
-	eBytes, err := ioutil.ReadAll(zReader) // []byte representation of JSON
+	zBytes, err := ioutil.ReadAll(b64Reader)
 	if err != nil {
+		log.Println("ReadAll error", err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	fmt.Println(hex.Dump(zBytes))
+
+	zReader, err := zlib.NewReader(bytes.NewReader(zBytes))
+	eBytes, err := ioutil.ReadAll(zReader) // []byte representation of JSON
+	fmt.Println(string(eBytes))
+	if err != nil && err != io.ErrUnexpectedEOF {
 		log.Println("ReadAll error", err)
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -61,7 +75,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	// Log information received
-	log.Printf("Timestamp %s, Client IP %s, User Agent %s, Event Type %s, URL %s, Msg ID %s\n", e.TimeStamp, e.IPAddress, e.UserAgent, e.WD.Action, e.WD.TargetLinkURL, e.WD.MessageID)
+	log.Printf("Timestamp %s, IPAddress %s, UserAgent %s, Action %s, URL %s, MsgID %s\n", e.TimeStamp, e.IPAddress, e.UserAgent, e.WD.Action, e.WD.TargetLinkURL, e.WD.MessageID)
 
 	client := spmta.MyRedis()
 	if _, err = client.RPush(spmta.RedisQueue, eBytes).Result(); err != nil {
@@ -69,6 +83,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
 	// Emulate response that SparkPost gives on GET opens, clicks and OPTIONS method. Change as required
 	w.Header().Set("Server", "msys-http")
 	switch req.Method {
@@ -96,6 +111,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 func main() {
 	inHostPort := flag.String("in_hostport", ":8888", "host:port to serve incoming HTTP requests")
 	logfile := flag.String("logfile", "", "File written with message logs")
+	//verboseOpt := flag.Bool("verbose", false, "print out lots of messages")
 	flag.Parse()
 	spmta.MyLogger(*logfile)
 

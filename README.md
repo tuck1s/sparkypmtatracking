@@ -36,7 +36,7 @@ go get github.com/smartystreets/scanners/csv
 go get github.com/google/uuid
 ```
 
-Installation instructions follow, for each app.
+Run the `./build.sh` script included in the project, to build each app.
 
 ## wrapper
 
@@ -193,19 +193,13 @@ PMTA config needs to have the following accounting pipe. An example config file 
 |vmtaPool|IP Pool (name)|
 
 
-Build, test this app and hook it into PMTA.
-```
-cd ~/go/src/github.com/sparkyPmtaTracking/src/acct_etl
-go build
-cd ../..
-
 # test your build worked OK on example file. This should write log entries in your current dir.
-src/acct_etl/acct_etl example.csv
+./acct_etl --logfile acct_etl.log --infile example.csv
 cat acct_etl.log
 
 # copy executable to a place where PMTA can run it, and set owner. Need to temporarily stop PMTA
 sudo service pmta stop
-sudo cp src/acct_etl/acct_etl /usr/local/bin/acct_etl
+sudo cp acct_etl /usr/local/bin/acct_etl
 sudo chown pmta:pmta /usr/local/bin/acct_etl
 sudo service pmta start
 ```

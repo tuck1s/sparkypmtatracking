@@ -153,7 +153,7 @@ func (wrap *Wrapper) wrap(action string, targetlink string) string {
 	if _, err = zw.Write(pathData); err != nil {
 		return ""
 	}
-	if err = zw.Close(); err != nil {
+	if err = zw.Flush(); err != nil {
 		return ""
 	}
 	pj := path.Join(wrap.URL.Path, b64Z.String())
@@ -162,6 +162,8 @@ func (wrap *Wrapper) wrap(action string, targetlink string) string {
 		Host:   wrap.URL.Host,
 		Path:   pj,
 	}
+	zw.Close()
+	b64w.Close()
 	return u.String()
 }
 

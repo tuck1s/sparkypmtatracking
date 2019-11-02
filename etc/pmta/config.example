@@ -10,7 +10,8 @@ postmaster steve.tuck@sparkpost.com
 #
 # IP address(es) and port(s) on which to listen for incoming SMTP connections
 #
-smtp-listener 0.0.0.0:587
+# NOTE this listener will be fed by the wrapper service
+smtp-listener 0.0.0.0:5587
 
 smtp-listener 0.0.0.0:25
 
@@ -157,7 +158,7 @@ log-file /var/log/pmta/pmta.log   # logrotate is used for rotation
 </acct-file>
 
 # Pipe into our acct_etl process
-<acct-file |/usr/local/bin/acct_etl>
+<acct-file |/usr/local/bin/acct_etl --logfile acct_etl.log>
     records d
     record-fields d orig,rcpt,header_x-sp-message-id,jobId,dlvSourceIp,vmta,header_Subject
 </acct-file>
