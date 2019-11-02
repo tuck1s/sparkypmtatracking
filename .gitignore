@@ -17,3 +17,4 @@ acct_etl
 feeder
 tracker
 wrapper
+setenvs.sh
