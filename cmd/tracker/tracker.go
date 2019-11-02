@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -29,8 +28,6 @@ var transparentGif = []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff" +
 // where xyzzy = base64 urlsafe encoded, Zlib compressed, []byte
 // These are written to the Redis queue
 func trackingServer(w http.ResponseWriter, req *http.Request) {
-	log.Println(req.URL.Path)
-
 	s := strings.Split(req.URL.Path, "/")
 	if s[0] != "" || len(s) != 2 {
 		log.Println("Incoming URL error:", req.URL.Path)
@@ -52,7 +49,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	fmt.Println(hex.Dump(zBytes))
+	// fmt.Println(hex.Dump(zBytes)) debug
 
 	zReader, err := zlib.NewReader(bytes.NewReader(zBytes))
 	eBytes, err := ioutil.ReadAll(zReader) // []byte representation of JSON
