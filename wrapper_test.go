@@ -2,6 +2,7 @@ package sparkypmtatracking_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"io"
 	"strings"
 	"testing"
@@ -79,7 +80,7 @@ func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error
 		t.Errorf("Got and expected values differ:\n---Got\n%s\n\n---Expected\n%s\n", got, expected)
 	}
 	if n != len(expected) {
-		t.Errorf("Count of copied bytes differs: got %d, expexcted %d\n", n, len(expected))
+		t.Errorf("Count of copied bytes differs: got %d, expected %d\n", n, len(expected))
 	}
 }
 
@@ -175,4 +176,28 @@ func TestTrackHTMLFaultyInputs(t *testing.T) {
 	// Make faulty HTML
 	faultyHTML := "<htm  thats all folks"
 	ioHarness(faultyHTML, "", myTracker.TrackHTML, t)
+}
+
+func TestEncodeDecodePath(t *testing.T) {
+	const MAX = 1000
+	big := make([]byte, MAX)
+	for i := 0; i <= MAX; i++ {
+		expected := big[0:i]
+		_, err := rand.Read(expected) // Generate random byte string of varying length
+		if err != nil {
+			t.Errorf(err.Error())
+		}
+		enc, err := trk.EncodePath(expected)
+		if err != nil {
+			t.Errorf(err.Error())
+		}
+		got, err := trk.DecodePath(enc)
+		if err != nil {
+			t.Errorf(err.Error())
+		}
+		if bytes.Compare(expected, got) != 0 {
+			t.Errorf("EncodePath / DecodePath mismatch\nGot and expected values differ:\n---Got\n%s\n\n---Expected\n%s\n", got, expected)
+
+		}
+	}
 }

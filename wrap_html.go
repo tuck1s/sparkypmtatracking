@@ -136,29 +136,20 @@ func (wrap *Wrapper) WrapURL(url string) string {
 }
 
 func (wrap *Wrapper) wrap(action string, targetlink string) string {
-	wd := WrapperData{
-		Action:        action,
-		TargetLinkURL: targetlink,
-		MessageID:     wrap.messageID,
-		RcptTo:        wrap.rcptTo,
-	}
-	pathData, err := json.Marshal(wd)
+	pathData, err := json.Marshal(
+		WrapperData{
+			Action:        action,
+			TargetLinkURL: targetlink,
+			MessageID:     wrap.messageID,
+			RcptTo:        wrap.rcptTo,
+		})
 	if err != nil {
-		return ""
+		return targetlink // if can't wrap, return unchanged
 	}
-	// Feed the base64 writer from the zlib writer, taking the result as a string
-	var b64Buf bytes.Buffer
-	b64w := base64.NewEncoder(base64.URLEncoding, &b64Buf)
-	defer b64w.Close()
-	zw := zlib.NewWriter(b64w)
-	if _, err = zw.Write(pathData); err != nil {
-		return ""
+	b64s, err := EncodePath(pathData)
+	if err != nil {
+		return targetlink // if can't wrap, return unchanged
 	}
-	// Closing the writer pushes output through
-	if err = zw.Close(); err != nil {
-		return ""
-	}
-	b64s := b64Buf.String()
 	pj := path.Join(wrap.URL.Path, b64s)
 	u := url.URL{ // make a local copy so we don't change the parent
 		Scheme: wrap.URL.Scheme,
@@ -166,6 +157,39 @@ func (wrap *Wrapper) wrap(action string, targetlink string) string {
 		Path:   pj,
 	}
 	return u.String()
+}
+
+// EncodePath returns the base64-encoded, zlib-encoded version of data as a URL path string
+func EncodePath(data []byte) (string, error) {
+	var zBuf bytes.Buffer
+	zw := zlib.NewWriter(&zBuf)
+	if _, err := zw.Write(data); err != nil {
+		return "", err
+	}
+	// Meed tp close the writer to push output through
+	if err := zw.Close(); err != nil {
+		return "", err
+	}
+	b64s := base64.URLEncoding.EncodeToString(zBuf.Bytes())
+	return b64s, nil
+}
+
+// DecodePath returns the zlib-decoded, base64-decoded version of a url path string as []byte
+func DecodePath(s string) ([]byte, error) {
+	zData, err := base64.URLEncoding.DecodeString(s)
+	if err != nil {
+		return nil, err
+	}
+	zr, err := zlib.NewReader(bytes.NewReader(zData))
+	defer zr.Close()
+	if err != nil {
+		return nil, err
+	}
+	var dBuf bytes.Buffer
+	if _, err := io.Copy(&dBuf, zr); err != nil {
+		return nil, err
+	}
+	return dBuf.Bytes(), nil
 }
 
 // TrackHTML streams content to w from r (a la io.Copy), adding engagement tracking by wrapping links and inserting open pixel(s).

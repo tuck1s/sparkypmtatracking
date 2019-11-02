@@ -1,14 +1,9 @@
 package main
 
 import (
-	"bytes"
-	"compress/zlib"
-	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -40,28 +35,9 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 	t := time.Now().Unix() // add timestamp
 	e.TimeStamp = strconv.FormatInt(t, 10)
 
-	// Build a pipeline for base64 decode / zlib decode / json decode
-	urlReader := strings.NewReader(s[1])
-	b64Reader := base64.NewDecoder(base64.URLEncoding, urlReader)
-	zBytes, err := ioutil.ReadAll(b64Reader)
+	eBytes, err := spmta.DecodePath(s[1])
 	if err != nil {
-		log.Println("base64 ReadAll error", err)
-		log.Println(req.URL.Path)
-		log.Println(hex.Dump(zBytes))
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-
-	zReader, err := zlib.NewReader(bytes.NewReader(zBytes))
-	defer zReader.Close()
-	eBytes, err := ioutil.ReadAll(zReader) // []byte representation of JSON
-	if err != nil {
-		log.Println("zlib ReadAll error", err)
-		log.Println(req.URL.Path)
-		log.Println(hex.Dump(zBytes))
-		log.Println(string(eBytes))
-		// w.WriteHeader(http.StatusBadRequest)
-		// return
+		log.Println(err)
 	}
 	if err = json.Unmarshal(eBytes, &e.WD); err != nil {
 		log.Println(err)
