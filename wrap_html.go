@@ -147,23 +147,24 @@ func (wrap *Wrapper) wrap(action string, targetlink string) string {
 		return ""
 	}
 	// Feed the base64 writer from the zlib writer, taking the result as a string
-	var b64Z bytes.Buffer
-	b64w := base64.NewEncoder(base64.URLEncoding, &b64Z)
+	var b64Buf bytes.Buffer
+	b64w := base64.NewEncoder(base64.URLEncoding, &b64Buf)
+	defer b64w.Close()
 	zw := zlib.NewWriter(b64w)
 	if _, err = zw.Write(pathData); err != nil {
 		return ""
 	}
-	if err = zw.Flush(); err != nil {
+	// Closing the writer pushes output through
+	if err = zw.Close(); err != nil {
 		return ""
 	}
-	pj := path.Join(wrap.URL.Path, b64Z.String())
+	b64s := b64Buf.String()
+	pj := path.Join(wrap.URL.Path, b64s)
 	u := url.URL{ // make a local copy so we don't change the parent
 		Scheme: wrap.URL.Scheme,
 		Host:   wrap.URL.Host,
 		Path:   pj,
 	}
-	zw.Close()
-	b64w.Close()
 	return u.String()
 }
 
