@@ -59,6 +59,7 @@ func trackingServer(w http.ResponseWriter, req *http.Request) {
 		log.Println("zlib ReadAll error", err)
 		log.Println(req.URL.Path)
 		log.Println(hex.Dump(zBytes))
+		log.Println(eBytes)
 		// w.WriteHeader(http.StatusBadRequest)
 		// return
 	}
