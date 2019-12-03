@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -27,9 +28,27 @@ func uniqEventID() string {
 	return strconv.FormatUint(num, 10)
 }
 
+func safeStringToInt(s string) int {
+	if s == "" {
+		return 0 // Handle case where master account has blank/no header in data
+	}
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		log.Println("Warning: cannot convert", s, "to int")
+		i = 0
+	}
+	return i
+}
+
 // For efficiency under load, collect n events into a batch
 const ingestBatchSize = 1000
-const ingestMaxWait = 60 * time.Second
+
+func ingestMaxWait() time.Duration {
+	if runtime.GOOS == "darwin" {
+		return 1 * time.Second // developer setting
+	}
+	return 300 * time.Second // production setting
+}
 
 func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent, error) {
 	var tev spmta.TrackEvent
@@ -62,6 +81,7 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent
 		eptr.SendingIP = enrichment["dlvSourceIp"]
 		eptr.IPPool = enrichment["vmtaPool"]
 		eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
+		eptr.SubaccountID = safeStringToInt(enrichment["header_x-sp-subaccount-id"])
 	}
 
 	// Fill in these fields with default / unique / derived values
@@ -167,7 +187,7 @@ func main() {
 				}
 				trackingData = trackingData[:0] // empty the data, but keep capacity allocated
 			}
-			time.Sleep(ingestMaxWait)
+			time.Sleep(ingestMaxWait())
 		} else {
 			if err != nil {
 				log.Println(err)

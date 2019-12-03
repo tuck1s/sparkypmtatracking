@@ -10,7 +10,7 @@ type TrackEvent struct {
 
 // SparkPostEvent structure for SparkPost Ingest API. Note the nesting. There are some fields we're not populating:
 // ab_test_id, ab_test_version, injection_time, ip_address, ip_pool, msg_size, num_retries, queue_time,
-// raw_rcpt_to, rcpt_type, sending_ip, subaccount_id, target_link_name, template_id, template_version, transactional,
+// raw_rcpt_to, rcpt_type, sending_ip, target_link_name, template_id, template_version, transactional,
 // transmission_id, binding_group, binding
 type SparkPostEvent struct {
 	EventWrapper struct {
@@ -37,6 +37,7 @@ type SparkPostEvent struct {
 			TimeStamp     string   `json:"timestamp"`
 			TargetLinkURL string   `json:"target_link_url"`
 			UserAgent     string   `json:"user_agent"`
+			SubaccountID  int      `json:"subaccount_id"`
 		} `json:"track_event"`
 	} `json:"msys"`
 }
