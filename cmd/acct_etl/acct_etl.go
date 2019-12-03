@@ -27,7 +27,7 @@ var requiredAcctFields = []string{
 	typeField, msgIDField,
 }
 var optionalAcctFields = []string{
-	"orig", "rcpt", "jobId", "dlvSourceIp", "vmtaPool",
+	"orig", "rcpt", "jobId", "dlvSourceIp", "vmtaPool", "header_x-sp-subaccount-id",
 }
 
 // Acccounting header record sent at PowerMTA start, check for required and optional fields.
