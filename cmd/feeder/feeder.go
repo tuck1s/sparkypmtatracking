@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"runtime"
 	"strconv"
-	"strings"
 	"time"
 
 	spmta "github.com/tuck1s/sparkyPMTATracking"
@@ -75,21 +74,21 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent
 		if err != nil {
 			return spEvent, err
 		}
-		eptr.MsgFrom = enrichment["orig"]
+		// eptr.MsgFrom = enrichment["orig"]
 		eptr.RcptTo = enrichment["rcpt"]
-		eptr.CampaignID = enrichment["jobId"]
-		eptr.SendingIP = enrichment["dlvSourceIp"]
-		eptr.IPPool = enrichment["vmtaPool"]
-		eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
+		// eptr.CampaignID = enrichment["jobId"]
+		// eptr.SendingIP = enrichment["dlvSourceIp"]
+		// eptr.IPPool = enrichment["vmtaPool"]
+		// eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
 		eptr.SubaccountID = safeStringToInt(enrichment["header_x-sp-subaccount-id"])
 	}
 
 	// Fill in these fields with default / unique / derived values
-	eptr.DelvMethod = "esmtp"
+	// eptr.DelvMethod = "esmtp"
 	eptr.EventID = uniqEventID()
-	eptr.InitialPixel = true // These settings reflect capability of wrapper function
-	eptr.ClickTracking = true
-	eptr.OpenTracking = true
+	// eptr.InitialPixel = true // These settings reflect capability of wrapper function
+	// eptr.ClickTracking = true
+	// eptr.OpenTracking = true
 
 	// Skip these fields for now; you may have information to populate them from your own sources
 	//eptr.GeoIP, eptr.FriendlyFrom, eptr.RcptTags, eptr.RcptMeta
