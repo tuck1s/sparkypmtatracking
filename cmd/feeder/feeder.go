@@ -168,9 +168,9 @@ func main() {
 	// Process forever data arriving via Redis queue
 	trackingData := make([]string, 0, ingestBatchSize) // Pre-allocate for efficiency
 	for {
-		time.Sleep(1 * time.Second) // avoid thrashing round too fast
 		d, err := client.LPop(spmta.RedisQueue).Result()
 		if err == redis.Nil {
+			time.Sleep(1 * time.Second) // avoid thrashing round too fast
 			// special value means queue is empty. Ingest any data we have collected, then wait a while
 			if len(trackingData) > 0 {
 				time.Sleep(ingestPMTALatencySafety()) // TEMP: allow events to mature for a bit

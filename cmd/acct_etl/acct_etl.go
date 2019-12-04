@@ -19,6 +19,7 @@ const ttl = time.Duration(time.Hour * 24 * 10)
 
 // Scan input accounting records - required fields for enrichment must include type, header_x-sp-message-id.
 // Delivery records are of type "d".
+// These fields should match your /etc/pmta/config 
 const typeField = "type"
 const msgIDField = "header_x-sp-message-id"
 const deliveryType = "d"
