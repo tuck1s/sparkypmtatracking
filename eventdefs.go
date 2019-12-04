@@ -15,7 +15,7 @@ type TrackEvent struct {
 //    rcpt_meta, rcpt_tags, rcpt_type, recv_method, routing_domain, sending_ip, subject, template_id, template_version, transactional,
 //    transmission_id
 //
-// We are also not populating: delv_method, num_retries, queue_time, raw_rcpt_to, target_link_name, binding_group, binding
+// We are also not populating: num_retries, queue_time, raw_rcpt_to, target_link_name, binding_group, binding
 // A future implementation could usefully populate target_link_name if desired
 type SparkPostEvent struct {
 	EventWrapper struct {
@@ -23,8 +23,8 @@ type SparkPostEvent struct {
 			Type string `json:"type"`
 			// CampaignID    string   `json:"campaign_id"`
 			// ClickTracking bool     `json:"click_tracking"`
-			// DelvMethod string `json:"delv_method"`
-			EventID string `json:"event_id"`
+			DelvMethod string `json:"delv_method"`
+			EventID    string `json:"event_id"`
 			// FriendlyFrom  string   `json:"friendly_from"`
 			IPAddress string `json:"ip_address"`
 			GeoIP     GeoIP  `json:"geo_ip"`

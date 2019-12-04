@@ -84,7 +84,7 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent
 	}
 
 	// Fill in these fields with default / unique / derived values
-	// eptr.DelvMethod = "esmtp"
+	eptr.DelvMethod = "esmtp"
 	eptr.EventID = uniqEventID()
 	// eptr.InitialPixel = true // These settings reflect capability of wrapper function
 	// eptr.ClickTracking = true
