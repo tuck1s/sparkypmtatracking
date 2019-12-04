@@ -15,30 +15,19 @@ type TrackEvent struct {
 //    rcpt_meta, rcpt_tags, rcpt_type, recv_method, routing_domain, sending_ip, subject, template_id, template_version, transactional,
 //    transmission_id
 //
-// We are also not populating: num_retries, queue_time, raw_rcpt_to, target_link_name, binding_group, binding
-// A future implementation could usefully populate target_link_name if desired
+// We are also not populating: num_retries, queue_time, raw_rcpt_to, target_link_name
+// A future implementation could usefully populate target_link_name, geo_ip if desired
 type SparkPostEvent struct {
 	EventWrapper struct {
 		EventGrouping struct {
-			Type string `json:"type"`
-			// CampaignID    string   `json:"campaign_id"`
-			// ClickTracking bool     `json:"click_tracking"`
+			Type       string `json:"type"`
 			DelvMethod string `json:"delv_method"`
 			EventID    string `json:"event_id"`
-			// FriendlyFrom  string   `json:"friendly_from"`
-			IPAddress string `json:"ip_address"`
-			GeoIP     GeoIP  `json:"geo_ip"`
-			// InitialPixel  bool     `json:"initial_pixel"`
+			IPAddress  string `json:"ip_address"`
+			GeoIP      GeoIP  `json:"geo_ip"`
 			// IPPool        string   `json:"ip_pool"`
-			MessageID string `json:"message_id"`
-			// RcptTags      []string `json:"rcpt_tags"`
-			// RoutingDomain string   `json:"routing_domain"`
-			RcptTo string `json:"rcpt_to"`
-			// OpenTracking  bool     `json:"open_tracking"`
-			// MsgFrom       string   `json:"msg_from"`
-			// RcptMeta      struct{} `json:"rcpt_meta"`
-			// SendingIP     string   `json:"sending_ip"`
-			// Subject       string   `json:"subject"`
+			MessageID     string `json:"message_id"`
+			RcptTo        string `json:"rcpt_to"`
 			TimeStamp     string `json:"timestamp"`
 			TargetLinkURL string `json:"target_link_url"`
 			UserAgent     string `json:"user_agent"`

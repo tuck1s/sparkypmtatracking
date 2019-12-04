@@ -40,13 +40,14 @@ func safeStringToInt(s string) int {
 }
 
 // For efficiency under load, collect n events into a batch
-const ingestBatchSize = 1000
+const ingestBatchSize = 10000
 
-func ingestMaxWait() time.Duration {
+// ingestPMTALatencySafety allows PowerMTA to upload its events before we upload
+func ingestPMTALatencySafety() time.Duration {
 	if runtime.GOOS == "darwin" {
 		return 1 * time.Second // developer setting
 	}
-	return 300 * time.Second // production setting
+	return 120 * time.Second // production setting
 }
 
 func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent, error) {
@@ -74,25 +75,16 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent
 		if err != nil {
 			return spEvent, err
 		}
-		// eptr.MsgFrom = enrichment["orig"]
 		eptr.RcptTo = enrichment["rcpt"]
-		// eptr.CampaignID = enrichment["jobId"]
-		// eptr.SendingIP = enrichment["dlvSourceIp"]
 		// eptr.IPPool = enrichment["vmtaPool"]
-		// eptr.RoutingDomain = strings.Split(eptr.RcptTo, "@")[1]
 		eptr.SubaccountID = safeStringToInt(enrichment["header_x-sp-subaccount-id"])
 	}
 
 	// Fill in these fields with default / unique / derived values
 	eptr.DelvMethod = "esmtp"
 	eptr.EventID = uniqEventID()
-	// eptr.InitialPixel = true // These settings reflect capability of wrapper function
-	// eptr.ClickTracking = true
-	// eptr.OpenTracking = true
-
 	// Skip these fields for now; you may have information to populate them from your own sources
-	//eptr.GeoIP, eptr.FriendlyFrom, eptr.RcptTags, eptr.RcptMeta
-	//eptr.Subject			.. SparkPost doesn't fill this in on Open & Click events
+	//eptr.GeoIP
 	return spEvent, nil
 }
 
@@ -176,24 +168,26 @@ func main() {
 	// Process forever data arriving via Redis queue
 	trackingData := make([]string, 0, ingestBatchSize) // Pre-allocate for efficiency
 	for {
+		time.Sleep(1 * time.Second) // avoid thrashing round too fast
 		d, err := client.LPop(spmta.RedisQueue).Result()
 		if err == redis.Nil {
 			// special value means queue is empty. Ingest any data we have collected, then wait a while
 			if len(trackingData) > 0 {
+				time.Sleep(ingestPMTALatencySafety()) // TEMP: allow events to mature for a bit
 				err = sparkPostIngest(trackingData, client, host, apiKey)
 				if err != nil {
 					log.Println(err.Error())
 				}
 				trackingData = trackingData[:0] // empty the data, but keep capacity allocated
 			}
-			time.Sleep(ingestMaxWait())
 		} else {
 			if err != nil {
 				log.Println(err)
 			} else {
-				// stash data away for later. If we have a full batch, SparkPost sparkPostIngest it
+				// stash data away for later. If we have a full batch, sparkPostIngest it
 				trackingData = append(trackingData, d)
 				if len(trackingData) >= ingestBatchSize {
+					time.Sleep(ingestPMTALatencySafety()) // TEMP: allow events to mature for a bit
 					err = sparkPostIngest(trackingData, client, host, apiKey)
 					if err != nil {
 						log.Println(err.Error())
