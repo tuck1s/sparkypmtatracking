@@ -92,8 +92,8 @@ func main() {
 	//verboseOpt := flag.Bool("verbose", false, "print out lots of messages")
 	flag.Parse()
 	spmta.MyLogger(*logfile)
-
 	fmt.Println("Starting http server on", *inHostPort, ", logging to", *logfile)
+	log.Println("Starting http server on", *inHostPort)
 	// http server runs in plain, as it will be proxied (e.g. by nginx) that can provide https
 	http.HandleFunc("/", trackingServer) // Accept subtree matches
 	server := &http.Server{

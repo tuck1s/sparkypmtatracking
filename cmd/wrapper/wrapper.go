@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -25,8 +26,8 @@ func main() {
 	insecureSkipVerify := flag.Bool("insecure_skip_verify", false, "Skip check of peer cert on upstream side")
 	flag.Parse()
 	spmta.MyLogger(*logfile)
-
-	log.Println("Incoming host:port set to", *inHostPort)
+	fmt.Println("Starting smtp proxy service on port", *inHostPort, ", logging to", *logfile)
+	log.Println("Starting smtp proxy service on port", *inHostPort)
 	log.Println("Outgoing host:port set to", *outHostPort)
 
 	// Logging of proxy to upstream server DATA (in RFC822 .eml format)

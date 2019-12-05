@@ -4,13 +4,14 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/mail"
 	"net/url"
 	"path"
+	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/net/html"
@@ -19,8 +20,9 @@ import (
 // UniqMessageID returns a SparkPost formatted unique messageID
 func UniqMessageID() string {
 	uuid := uuid.New()
-	uBytes := uuid[0:8]
-	u := "00000" + hex.EncodeToString(uBytes)
+	tHex := fmt.Sprintf("%08x", time.Now().Unix())
+	tHexLittleEndian := tHex[6:8] + tHex[4:6] + tHex[2:4] + tHex[0:2] // reverse byte order
+	u := fmt.Sprintf("0000%s%02x%02x%02x%02x", tHexLittleEndian, uuid[0], uuid[1], uuid[2], uuid[3])
 	return u
 }
 

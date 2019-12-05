@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -156,6 +157,8 @@ func main() {
 	logfile := flag.String("logfile", "", "File written with message logs")
 	flag.Parse()
 	spmta.MyLogger(*logfile)
+	fmt.Println("Starting feeder service, logging to", *logfile)
+	log.Println("Starting feeder service")
 
 	// Get SparkPost ingest info from env vars
 	host := spmta.HostCleanup(spmta.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
