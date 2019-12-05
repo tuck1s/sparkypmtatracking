@@ -20,12 +20,11 @@ type TrackEvent struct {
 type SparkPostEvent struct {
 	EventWrapper struct {
 		EventGrouping struct {
-			Type       string `json:"type"`
-			DelvMethod string `json:"delv_method"`
-			EventID    string `json:"event_id"`
-			IPAddress  string `json:"ip_address"`
-			GeoIP      GeoIP  `json:"geo_ip"`
-			// IPPool        string   `json:"ip_pool"`
+			Type          string `json:"type"`
+			DelvMethod    string `json:"delv_method"`
+			EventID       string `json:"event_id"`
+			IPAddress     string `json:"ip_address"`
+			GeoIP         GeoIP  `json:"geo_ip"`
 			MessageID     string `json:"message_id"`
 			RcptTo        string `json:"rcpt_to"`
 			TimeStamp     string `json:"timestamp"`

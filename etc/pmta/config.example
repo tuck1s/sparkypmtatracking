@@ -168,7 +168,7 @@ log-file /var/log/pmta/pmta.log   # logrotate is used for rotation
 <acct-file |/usr/local/bin/acct_etl --logfile acct_etl.log>
     records d
     # Record useful extra data here; SparkPost enrichment will supply much of the rest from matching injection/delivery events
-    record-fields d rcpt,header_x-sp-message-id,header_x-sp-subaccount-id,vmtaPool
+    record-fields d rcpt,header_x-sp-message-id,header_x-sp-subaccount-id
 </acct-file>
 
 #
