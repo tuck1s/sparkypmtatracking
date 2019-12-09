@@ -9,14 +9,15 @@ type TrackEvent struct {
 }
 
 // SparkPostEvent structure for SparkPost Ingest API. Note the nesting. There are some fields we're not populating here,
-// as they will automatically be "enriched" by SparkPost, providing there is a matching injection event.
+// as they will automatically be "enriched" by SparkPost, providing there is a injection event matching for this message_id.
+//
 //    ab_test_id, ab_test_version, amp_enabled, binding, binding_group, campaign_id, click_tracking,
 //    friendly_from, initial_pixel, injection_time, ip_pool, ip_pool_raw, msg_from, msg_size, open_tracking,
 //    rcpt_meta, rcpt_tags, rcpt_type, recv_method, routing_domain, sending_ip, subject, template_id, template_version, transactional,
 //    transmission_id
 //
 // We are also not populating: num_retries, queue_time, raw_rcpt_to, target_link_name
-// A future implementation could usefully populate target_link_name, geo_ip if desired
+// A future implementation could usefully populate target_link_name, geo_ip if desired.
 type SparkPostEvent struct {
 	EventWrapper struct {
 		EventGrouping struct {
@@ -35,6 +36,9 @@ type SparkPostEvent struct {
 	} `json:"msys"`
 }
 
+// SparkPostIngestMaxPayload set in accord with https://developers.sparkpost.com/api/events-ingest/#header-event-format
+const SparkPostIngestMaxPayload = 5 * 1024 * 1024
+
 // IngestResult object coming back from SparkPost
 type IngestResult struct {
 	Results struct {
@@ -42,7 +46,7 @@ type IngestResult struct {
 	} `json:"results"`
 }
 
-// GeoIP data expected by SparkPost
+// GeoIP data expected by SparkPost .. will be blank for now
 type GeoIP struct {
 	Country    string
 	Region     string

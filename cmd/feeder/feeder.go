@@ -40,9 +40,6 @@ func safeStringToInt(s string) int {
 	return i
 }
 
-// For efficiency under load, collect n events into a batch
-const ingestBatchSize = 10000
-
 // ingestPMTALatencySafety allows PowerMTA to upload its events before we upload
 func ingestPMTALatencySafety() time.Duration {
 	if runtime.GOOS == "darwin" {
@@ -89,24 +86,24 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent
 	return spEvent, nil
 }
 
-// Prepare a batch of TrackingEvents for ingest to SparkPost.
-func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey string) error {
-	ingestData := make([]byte, 0, 5*1024*1024)
-	for _, eStr := range batch {
-		e, err := makeSparkPostEvent(eStr, client)
-		if err != nil {
-			log.Println(err.Error())
-			continue // with next event, if we can
-		}
-		eJSON, err := json.Marshal(e)
-		if err != nil {
-			log.Println(err.Error())
-			continue // with next event, if we can
-		}
-		ingestData = append(ingestData, eJSON...)
-		ingestData = append(ingestData, byte('\n'))
+// Enrich and format a SparkPost event into NDJSON
+func sparkPostEventNDJSON(eStr string, client *redis.Client) []byte {
+	e, err := makeSparkPostEvent(eStr, client)
+	if err != nil {
+		log.Println(err.Error())
+		return nil
 	}
-	// Now have ingestData ndJSON in byte slice form - gzip compress
+	eJSON, err := json.Marshal(e)
+	if err != nil {
+		log.Println(err.Error())
+		return nil
+	}
+	eJSON = append(eJSON, byte('\n'))
+	return eJSON
+}
+
+// Prepare a batch of TrackingEvents for ingest to SparkPost.
+func sparkPostIngest(ingestData []byte, client *redis.Client, host string, apiKey string) error {
 	var zbuf bytes.Buffer
 	zw := gzip.NewWriter(&zbuf)
 	_, err := zw.Write(ingestData)
@@ -148,28 +145,14 @@ func sparkPostIngest(batch []string, client *redis.Client, host string, apiKey s
 	if err != nil {
 		return err
 	}
-	log.Printf("Uploaded %d events, %d bytes (gzip). SparkPost Ingest response: %s, results.id=%s\n", len(batch), gzipSize, res.Status, resObj.Results.ID)
+	log.Printf("Uploaded %d bytes raw, %d bytes gzipped. SparkPost Ingest response: %s, results.id=%s\n", len(ingestData), gzipSize, res.Status, resObj.Results.ID)
 	err = res.Body.Close()
 	return err
 }
 
-func main() {
-	logfile := flag.String("logfile", "", "File written with message logs")
-	flag.Parse()
-	spmta.MyLogger(*logfile)
-	fmt.Println("Starting feeder service, logging to", *logfile)
-	log.Println("Starting feeder service")
-
-	// Get SparkPost ingest info from env vars
-	host := spmta.HostCleanup(spmta.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
-	apiKey := spmta.GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
-	if apiKey == "" {
-		spmta.ConsoleAndLogFatal("SPARKPOST_API_KEY_INGEST not set - stopping")
-	}
-	client := spmta.MyRedis()
-
-	// Process forever data arriving via Redis queue
-	trackingData := make([]string, 0, ingestBatchSize) // Pre-allocate for efficiency
+// feed data arriving via Redis queue to SparkPost ingest API
+func feedForever(client *redis.Client, host string, apiKey string) {
+	trackingData := make([]byte, 0, spmta.SparkPostIngestMaxPayload+4096) // Pre-allocate for efficiency with a bit extra spare
 	for {
 		d, err := client.LPop(spmta.RedisQueue).Result()
 		if err == redis.Nil {
@@ -190,8 +173,9 @@ func main() {
 				log.Println(err)
 			} else {
 				// stash data away for later. If we have a full batch, sparkPostIngest it
-				trackingData = append(trackingData, d)
-				if len(trackingData) >= ingestBatchSize {
+				trackingData = append(trackingData, sparkPostEventNDJSON(d, client)...)
+				fmt.Println(string(trackingData))
+				if len(trackingData) >= spmta.SparkPostIngestMaxPayload {
 					snooze := ingestPMTALatencySafety()
 					log.Printf("Sleeping %v prior to ingest\n", snooze)
 					time.Sleep(ingestPMTALatencySafety()) // TEMP: allow events to mature for a bit
@@ -204,4 +188,22 @@ func main() {
 			}
 		}
 	}
+}
+
+func main() {
+	logfile := flag.String("logfile", "", "File written with message logs")
+	flag.Parse()
+	spmta.MyLogger(*logfile)
+	fmt.Println("Starting feeder service, logging to", *logfile)
+	log.Println("Starting feeder service")
+
+	// Get SparkPost ingest info from env vars
+	host := spmta.HostCleanup(spmta.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
+	apiKey := spmta.GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
+	if apiKey == "" {
+		spmta.ConsoleAndLogFatal("SPARKPOST_API_KEY_INGEST not set - stopping")
+	}
+
+	// Process events forever
+	feedForever(spmta.MyRedis(), host, apiKey)
 }
