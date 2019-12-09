@@ -150,36 +150,54 @@ func sparkPostIngest(ingestData []byte, client *redis.Client, host string, apiKe
 	return err
 }
 
-// feed data arriving via Redis queue to SparkPost ingest API
+type myTimedBuffer struct {
+	content     []byte
+	timeStarted time.Time
+}
+
+// matureContent returns true if the buffer has contents that are now older than the specified maturity time
+func matureContent(t myTimedBuffer) bool {
+	age := time.Since(t.timeStarted)
+	return len(t.content) > 0 && age >= spmta.SparkPostIngestBatchMaturity
+}
+
+// feed data arriving via Redis queue to SparkPost ingest API.
+// Send a batch periodically, or every X MB, whichever comes first.
 func feedForever(client *redis.Client, host string, apiKey string) {
-	trackingData := make([]byte, 0, spmta.SparkPostIngestMaxPayload+4096) // Pre-allocate for efficiency with a bit extra spare
+	var tBuf myTimedBuffer
+	tBuf.content = make([]byte, 0, spmta.SparkPostIngestMaxPayload) // Pre-allocate for efficiency
 	for {
 		d, err := client.LPop(spmta.RedisQueue).Result()
 		if err == redis.Nil {
-			time.Sleep(1 * time.Second) // avoid thrashing round too fast
-			// special value means queue is empty. Ingest any data we have collected, then wait a while
-			if len(trackingData) > 0 {
-				err = sparkPostIngest(trackingData, client, host, apiKey)
+			// Queue is now empty - send this batch if it's old enough
+			if matureContent(tBuf) {
+				err = sparkPostIngest(tBuf.content, client, host, apiKey)
 				if err != nil {
-					log.Println(err.Error())
+					log.Println(err)
 				}
-				trackingData = trackingData[:0] // empty the data, but keep capacity allocated
+				tBuf.content = tBuf.content[:0] // empty the data, but keep capacity allocated
 			}
-		} else {
+			time.Sleep(1 * time.Second) // polling wait time
+			continue
+		}
+		if err != nil {
+			log.Println(err) // report a Redis error
+			continue
+		}
+		thisEvent := sparkPostEventNDJSON(d, client)
+		// If this event would make the content oversize, send what we already have
+		if len(tBuf.content)+len(thisEvent) >= spmta.SparkPostIngestMaxPayload {
+			err = sparkPostIngest(tBuf.content, client, host, apiKey)
 			if err != nil {
 				log.Println(err)
-			} else {
-				// stash data away for later. If we have a full batch, sparkPostIngest it
-				trackingData = append(trackingData, sparkPostEventNDJSON(d, client)...)
-				if len(trackingData) >= spmta.SparkPostIngestMaxPayload {
-					err = sparkPostIngest(trackingData, client, host, apiKey)
-					if err != nil {
-						log.Println(err.Error())
-					}
-					trackingData = trackingData[:0] // empty the data, but keep capacity allocated
-				}
 			}
+			tBuf.content = tBuf.content[:0] // empty the data, but keep capacity allocated
 		}
+		if len(tBuf.content) == 0 {
+			// mark time of this event being placed into an empty buffer
+			tBuf.timeStarted = time.Now()
+		}
+		tBuf.content = append(tBuf.content, thisEvent...)
 	}
 }
 

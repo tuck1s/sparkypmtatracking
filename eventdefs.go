@@ -1,5 +1,7 @@
 package sparkypmtatracking
 
+import "time"
+
 // TrackEvent is the augmented info passed from "tracker" via the Redis event queue to "feeder"
 type TrackEvent struct {
 	WD        WrapperData
@@ -36,8 +38,13 @@ type SparkPostEvent struct {
 	} `json:"msys"`
 }
 
+// Send a batch periodically, or every X MB, whichever comes first.
+
 // SparkPostIngestMaxPayload set in accord with https://developers.sparkpost.com/api/events-ingest/#header-event-format
 const SparkPostIngestMaxPayload = 5 * 1024 * 1024
+
+// SparkPostIngestBatchMaturity sets the maximum time we wait before forwarding a batch of events
+const SparkPostIngestBatchMaturity = 30 * time.Second
 
 // IngestResult object coming back from SparkPost
 type IngestResult struct {
