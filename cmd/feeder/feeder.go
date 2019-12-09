@@ -159,9 +159,6 @@ func feedForever(client *redis.Client, host string, apiKey string) {
 			time.Sleep(1 * time.Second) // avoid thrashing round too fast
 			// special value means queue is empty. Ingest any data we have collected, then wait a while
 			if len(trackingData) > 0 {
-				snooze := ingestPMTALatencySafety()
-				log.Printf("Sleeping %v prior to ingest\n", snooze)
-				time.Sleep(snooze) // TEMP: allow events to mature for a bit
 				err = sparkPostIngest(trackingData, client, host, apiKey)
 				if err != nil {
 					log.Println(err.Error())
@@ -174,11 +171,7 @@ func feedForever(client *redis.Client, host string, apiKey string) {
 			} else {
 				// stash data away for later. If we have a full batch, sparkPostIngest it
 				trackingData = append(trackingData, sparkPostEventNDJSON(d, client)...)
-				fmt.Println(string(trackingData))
 				if len(trackingData) >= spmta.SparkPostIngestMaxPayload {
-					snooze := ingestPMTALatencySafety()
-					log.Printf("Sleeping %v prior to ingest\n", snooze)
-					time.Sleep(ingestPMTALatencySafety()) // TEMP: allow events to mature for a bit
 					err = sparkPostIngest(trackingData, client, host, apiKey)
 					if err != nil {
 						log.Println(err.Error())
