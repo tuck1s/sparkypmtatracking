@@ -156,7 +156,7 @@ func TestNewTracker(t *testing.T) {
 
 func TestUniqMessageID(t *testing.T) {
 	x := trk.UniqMessageID()
-	if len(x) != 21 {
+	if len(x) != 20 {
 		t.Errorf("Unexpected result from UniqMessageID")
 	}
 
