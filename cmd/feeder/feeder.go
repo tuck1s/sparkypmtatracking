@@ -11,7 +11,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"runtime"
+	"os"
 	"strconv"
 	"time"
 
@@ -26,26 +26,6 @@ func uniqEventID() string {
 	u := uuid.New()
 	num := binary.LittleEndian.Uint64(u[:8]) & 0x7fffffffffffffff
 	return strconv.FormatUint(num, 10)
-}
-
-func safeStringToInt(s string) int {
-	if s == "" {
-		return 0 // Handle case where master account has blank/no header in data
-	}
-	i, err := strconv.Atoi(s)
-	if err != nil {
-		log.Println("Warning: cannot convert", s, "to int")
-		i = 0
-	}
-	return i
-}
-
-// ingestPMTALatencySafety allows PowerMTA to upload its events before we upload
-func ingestPMTALatencySafety() time.Duration {
-	if runtime.GOOS == "darwin" {
-		return 1 * time.Second // developer setting
-	}
-	return 120 * time.Second // production setting
 }
 
 func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent, error) {
@@ -74,15 +54,14 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (spmta.SparkPostEvent
 			return spEvent, err
 		}
 		eptr.RcptTo = enrichment["rcpt"]
-		// eptr.IPPool = enrichment["vmtaPool"]
-		eptr.SubaccountID = safeStringToInt(enrichment["header_x-sp-subaccount-id"])
+		eptr.SubaccountID = spmta.SafeStringToInt(enrichment["header_x-sp-subaccount-id"])
 	}
 
 	// Fill in these fields with default / unique / derived values
 	eptr.DelvMethod = "esmtp"
 	eptr.EventID = uniqEventID()
 	// Skip these fields for now; you may have information to populate them from your own sources
-	//eptr.GeoIP
+	// 	eptr.GeoIP
 	return spEvent, nil
 }
 
@@ -202,17 +181,28 @@ func feedForever(client *redis.Client, host string, apiKey string) {
 }
 
 func main() {
+	const spHostEnvVar = "SPARKPOST_HOST_INGEST"
+	const spAPIKeyEnvVar = "SPARKPOST_API_KEY_INGEST"
+	flag.Usage = func() {
+		const helpText = "Takes the opens and clicks from the Redis queue and feeds them to the SparkPost Ingest API\n" +
+			"Requires environment variable %s and optionally %s\n" +
+			"Usage of %s:\n"
+		fmt.Fprintf(flag.CommandLine.Output(), helpText, spAPIKeyEnvVar, spHostEnvVar, os.Args[0])
+		flag.PrintDefaults()
+	}
 	logfile := flag.String("logfile", "", "File written with message logs")
 	flag.Parse()
 	spmta.MyLogger(*logfile)
-	fmt.Println("Starting feeder service, logging to", *logfile)
+	if *logfile != "" {
+		fmt.Println("Starting feeder service, logging to", *logfile)
+	}
 	log.Println("Starting feeder service")
 
 	// Get SparkPost ingest info from env vars
-	host := spmta.HostCleanup(spmta.GetenvDefault("SPARKPOST_HOST_INGEST", "api.sparkpost.com"))
-	apiKey := spmta.GetenvDefault("SPARKPOST_API_KEY_INGEST", "")
+	host := spmta.HostCleanup(spmta.GetenvDefault(spHostEnvVar, "api.sparkpost.com"))
+	apiKey := spmta.GetenvDefault(spAPIKeyEnvVar, "")
 	if apiKey == "" {
-		spmta.ConsoleAndLogFatal("SPARKPOST_API_KEY_INGEST not set - stopping")
+		spmta.ConsoleAndLogFatal(fmt.Sprintf("%s not set - stopping", spAPIKeyEnvVar))
 	}
 
 	// Process events forever

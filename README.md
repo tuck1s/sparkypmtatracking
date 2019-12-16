@@ -34,6 +34,7 @@ cd sparkyPmtaTracking/
 go get github.com/go-redis/redis
 go get github.com/smartystreets/scanners/csv
 go get github.com/google/uuid
+go get gopkg.in/natefinch/lumberjack.v2
 ```
 
 Run the `./build.sh` script included in the project, to build each app.

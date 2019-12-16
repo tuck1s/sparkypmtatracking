@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/go-redis/redis"
+	"gopkg.in/natefinch/lumberjack.v2" // timed rotating log handler
 )
 
 // ConsoleAndLogFatal writes error to both log and stdout
@@ -19,11 +21,11 @@ func ConsoleAndLogFatal(s ...interface{}) {
 // If filename is blank string, then output is stdout only
 func MyLogger(filename string) {
 	if filename != "" {
-		logfile, err := os.OpenFile(filename, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
-		if err != nil {
-			ConsoleAndLogFatal(err)
-		}
-		log.SetOutput(logfile)
+		log.SetOutput(&lumberjack.Logger{
+			Filename: filename,
+			MaxAge:   7,    //days
+			Compress: true, // disabled by default
+		})
 	}
 }
 
@@ -69,6 +71,19 @@ func Contains(a []string, x string) bool {
 		}
 	}
 	return false
+}
+
+// SafeStringToInt logs an error and returns zero if it can't convert
+func SafeStringToInt(s string) int {
+	if s == "" {
+		return 0 // Handle case where master account has blank/no header in data
+	}
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		log.Println("Warning: cannot convert", s, "to int")
+		i = 0
+	}
+	return i
 }
 
 //-----------------------------------------------------------------------------
