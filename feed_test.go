@@ -5,11 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"log"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,6 +17,12 @@ import (
 )
 
 const mockAPIKey = "xyzzy"
+const testAction = "c" // click
+const testURL = "http://example.com/this/is/a/test"
+const testUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/603.3.8 (KHTML, like Gecko)"
+const testIPAddress = "12.34.56.78"
+const testTime = 5 * time.Second
+const testSubaccountID = 3
 
 // checkHeaders walks through the headers and checks against expected values
 func checkHeaders(h http.Header, chk map[string]string) error {
@@ -41,45 +45,56 @@ func checkResponse(r *http.Request) error {
 	if r.Method != "POST" {
 		return errors.New(fmt.Sprintf("Unexpected Method found: %s", r.Method))
 	}
-
 	if r.RequestURI != "/api/v1/ingest/events" {
 		return errors.New(fmt.Sprintf("Unexpected RequestURI: %s", r.RequestURI))
 	}
-
 	expectedHeaders := map[string]string{
 		"Authorization":    mockAPIKey,
 		"Content-Encoding": "gzip",
 		"Content-Type":     "application/x-ndjson",
 		"Accept-Encoding":  "gzip",
 	}
-	if s := checkHeaders(r.Header, expectedHeaders); s != nil {
-		return s
+	if err := checkHeaders(r.Header, expectedHeaders); err != nil {
+		return err
 	}
-
 	// Pass the body through the Gzip reader
 	zr, err := gzip.NewReader(r.Body)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-
-	fmt.Printf("Name: %s\nComment: %s\nModTime: %s\n\n", zr.Name, zr.Comment, zr.ModTime.UTC())
-
-	if _, err := io.Copy(os.Stdout, zr); err != nil {
-		log.Fatal(err)
+	payloadBytes, err := ioutil.ReadAll(zr)
+	if err != nil {
+		return err
 	}
-
-	if err := zr.Close(); err != nil {
-		log.Fatal(err)
+	// strip off newline delimiter
+	if payloadBytes[len(payloadBytes)-1] == '\n' {
+		payloadBytes = payloadBytes[:len(payloadBytes)-1]
 	}
-
+	// Decode back into struct
+	var event spmta.SparkPostEvent
+	if err := json.Unmarshal(payloadBytes, &event); err != nil {
+		return err
+	}
+	e := event.EventWrapper.EventGrouping
+	if e.Type != "click" || e.DelvMethod != "esmtp" || len(e.EventID) < 10 {
+		return errors.New(fmt.Sprintf("Event has a suspect value somewhere in a) %v %v %v", e.Type, e.DelvMethod, e.EventID))
+	}
+	if e.IPAddress != testIPAddress || e.MessageID != testMessageID || e.RcptTo != testRecipient {
+		return errors.New(fmt.Sprintf("Event has a suspect value somewhere in b) %v %v %v", e.IPAddress, e.MessageID, e.RcptTo))
+	}
+	if len(e.TimeStamp) < 10 || e.TargetLinkURL != testURL || e.UserAgent != testUserAgent {
+		return errors.New(fmt.Sprintf("Event has a suspect value somewhere in c) %v %v %v", e.TimeStamp, e.TargetLinkURL, e.UserAgent))
+	}
+	if e.SubaccountID != testSubaccountID {
+		return errors.New(fmt.Sprintf("Event has a suspect value somewhere in d) %v", e.SubaccountID))
+	}
 	return nil
 }
 
 // Mock SparkPost endpoint
 func ingestServer(w http.ResponseWriter, r *http.Request) {
 	s := checkResponse(r)
-	fmt.Println(s)
-	//TODO: handle error return values
+	//TODO: actually check return value
 }
 
 // Run the mock SparkPost endpoint
@@ -94,16 +109,8 @@ func startMockIngest(t *testing.T, addrPort string) {
 	}
 }
 
-const testAction = "c" // click
-const testURL = "http://example.com/this/is/a/test"
-const testUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/603.3.8 (KHTML, like Gecko)"
-const testIPAddress = "12.34.56.78"
-
-const testTime = 5 * time.Second
-
 // Test the feeder function by creating a mockup endpoint that will receive data that we push to it
 func TestFeedForever(t *testing.T) {
-	rand.Seed(42)
 	p := rand.Intn(1000) + 8000
 	mockIngestAddrPort := ":" + strconv.Itoa(p)
 
@@ -115,7 +122,7 @@ func TestFeedForever(t *testing.T) {
 	go spmta.FeedForever(client, "http://"+mockIngestAddrPort, mockAPIKey, testTime)
 
 	// Build a test event
-	msgID := spmta.UniqMessageID()
+	msgID := testMessageID
 	var e spmta.TrackEvent
 	e.WD = spmta.WrapperData{
 		Action:        testAction,
@@ -133,6 +140,20 @@ func TestFeedForever(t *testing.T) {
 	}
 
 	// Create a fake acct_etl enrichment record in Redis
+	enrichment := map[string]string{
+		"header_x-sp-subaccount-id": strconv.Itoa(testSubaccountID),
+		"rcpt":                      testRecipient,
+	}
+	enrichmentJSON, err := json.Marshal(enrichment)
+	if err != nil {
+		t.Errorf("Error %v", err)
+	}
+	msgIDKey := spmta.TrackingPrefix + msgID
+	ttl := time.Duration(testTime * 10) // expires fairly quickly after test run
+	_, err = client.Set(msgIDKey, enrichmentJSON, ttl).Result()
+	if err != nil {
+		t.Errorf("Error %v", err)
+	}
 
 	if _, err = client.RPush(spmta.RedisQueue, eBytes).Result(); err != nil {
 		t.Errorf("Error %v", err)
