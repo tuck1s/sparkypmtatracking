@@ -94,12 +94,20 @@ func checkResponse(r *http.Request) error {
 // Mock SparkPost endpoint
 func ingestServer(w http.ResponseWriter, r *http.Request) {
 	s := checkResponse(r)
-	//TODO: actually check return value
+	if s != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		eJSON := fmt.Sprintf(`{"errors": [ {"message": "%s"} ]}`, s.Error())
+		w.Write([]byte(eJSON))
+		return
+	}
+	// Success
+	eJSON := `{"results": {"id": "mock test passed"} }`
+	w.Write([]byte(eJSON))
 }
 
 // Run the mock SparkPost endpoint
 func startMockIngest(t *testing.T, addrPort string) {
-	http.HandleFunc("/", ingestServer) // Accept subtree matches
+	http.HandleFunc("/", ingestServer)
 	server := &http.Server{
 		Addr: addrPort,
 	}
@@ -162,6 +170,6 @@ func TestFeedForever(t *testing.T) {
 	// Wait for processes to run
 	time.Sleep(2 * testTime)
 
-	// Check if results happened. Our goroutines will keep running :shrug:
+	// TODO: Check if results happened in the logfile. Our goroutines will keep running until all the tests are done
 	fmt.Println("Done")
 }

@@ -51,6 +51,9 @@ type IngestResult struct {
 	Results struct {
 		ID string `json:"id"`
 	} `json:"results"`
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
 }
 
 // GeoIP data expected by SparkPost .. will be blank for now

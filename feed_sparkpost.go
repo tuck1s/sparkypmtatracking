@@ -119,7 +119,14 @@ func sparkPostIngest(ingestData []byte, client *redis.Client, host string, apiKe
 	if err != nil {
 		return err
 	}
-	log.Printf("Uploaded %d bytes raw, %d bytes gzipped. SparkPost Ingest response: %s, results.id=%s\n", len(ingestData), gzipSize, res.Status, resObj.Results.ID)
+	if resObj.Errors != nil && len(resObj.Errors) > 0 {
+		log.Printf("Uploaded %d bytes raw, %d bytes gzipped. SparkPost response: %s, errors[0]= %s\n",
+			len(ingestData), gzipSize, res.Status, resObj.Errors[0].Message)
+	}
+	if resObj.Results.ID != "" {
+		log.Printf("Uploaded %d bytes raw, %d bytes gzipped. SparkPost Ingest response: %s, results.id=%s\n",
+			len(ingestData), gzipSize, res.Status, resObj.Results.ID)
+	}
 	err = res.Body.Close()
 	return err
 }
