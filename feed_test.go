@@ -1,12 +1,12 @@
 package sparkypmtatracking_test
 
 import (
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"math/rand"
 	"net/http"
@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-redis/redis"
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
@@ -77,31 +78,29 @@ func checkResponse(r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	payloadBytes, err := ioutil.ReadAll(zr)
-	if err != nil {
-		return err
-	}
-	// strip off newline delimiter
-	if payloadBytes[len(payloadBytes)-1] == '\n' {
-		payloadBytes = payloadBytes[:len(payloadBytes)-1]
-	}
-	// Decode back into struct
-	var event spmta.SparkPostEvent
-	if err := json.Unmarshal(payloadBytes, &event); err != nil {
-		return err
-	}
-	e := event.EventWrapper.EventGrouping
-	if e.Type != "click" || e.DelvMethod != "esmtp" || len(e.EventID) < 10 {
-		return errors.New(fmt.Sprintf("Event has a suspect value somewhere in a) %v %v %v", e.Type, e.DelvMethod, e.EventID))
-	}
-	if e.IPAddress != testIPAddress || e.MessageID != testMessageID || e.RcptTo != testRecipient {
-		return errors.New(fmt.Sprintf("Event has a suspect value somewhere in b) %v %v %v", e.IPAddress, e.MessageID, e.RcptTo))
-	}
-	if len(e.TimeStamp) < 10 || e.TargetLinkURL != testURL || e.UserAgent != testUserAgent {
-		return errors.New(fmt.Sprintf("Event has a suspect value somewhere in c) %v %v %v", e.TimeStamp, e.TargetLinkURL, e.UserAgent))
-	}
-	if e.SubaccountID != testSubaccountID {
-		return errors.New(fmt.Sprintf("Event has a suspect value somewhere in d) %v", e.SubaccountID))
+
+	// Scan for newline-delimited content
+	s := bufio.NewScanner(zr)
+	for s.Scan() {
+		// Decode back into struct
+		var event spmta.SparkPostEvent
+		if err := json.Unmarshal(s.Bytes(), &event); err != nil {
+			return err
+		}
+		// Check contents
+		e := event.EventWrapper.EventGrouping
+		if e.Type != "click" || e.DelvMethod != "esmtp" || len(e.EventID) < 10 {
+			return errors.New(fmt.Sprintf("Event has a suspect value somewhere in a) %v %v %v", e.Type, e.DelvMethod, e.EventID))
+		}
+		if e.IPAddress != testIPAddress || e.MessageID != testMessageID || e.RcptTo != testRecipient {
+			return errors.New(fmt.Sprintf("Event has a suspect value somewhere in b) %v %v %v", e.IPAddress, e.MessageID, e.RcptTo))
+		}
+		if len(e.TimeStamp) < 10 || e.TargetLinkURL != testURL || e.UserAgent != testUserAgent {
+			return errors.New(fmt.Sprintf("Event has a suspect value somewhere in c) %v %v %v", e.TimeStamp, e.TargetLinkURL, e.UserAgent))
+		}
+		if e.SubaccountID != testSubaccountID {
+			return errors.New(fmt.Sprintf("Event has a suspect value somewhere in d) %v", e.SubaccountID))
+		}
 	}
 	return nil
 }
@@ -134,7 +133,6 @@ func startMockIngest(t *testing.T, addrPort string) {
 
 // Test the feeder function by creating a mockup endpoint that will receive data that we push to it
 func TestFeedForever(t *testing.T) {
-	myLogp := captureLog()
 	p := rand.Intn(1000) + 8000
 	mockIngestAddrPort := ":" + strconv.Itoa(p)
 
@@ -142,9 +140,50 @@ func TestFeedForever(t *testing.T) {
 	go startMockIngest(t, mockIngestAddrPort)
 	client := spmta.MyRedis()
 
+	// Make sure redis queue is empty
+	for {
+		_, err := client.LPop(spmta.RedisQueue).Result()
+		if err == redis.Nil {
+			break
+		}
+	}
+
 	// Start the feeder process concurrently. We don't have to wait the usual time
 	go spmta.FeedForever(client, "http://"+mockIngestAddrPort, mockAPIKey, testTime)
 
+	fmt.Println("One event")
+	myLogp := captureLog()
+	mockEvents(t, 1, client)
+	checkLog(t, 20, myLogp, "SparkPost Ingest response: 200 OK, results.id=mock test passed")
+
+	fmt.Println("Many events")
+	myLogp = captureLog()
+	mockEvents(t, 12000, client)
+	checkLog(t, 20, myLogp, "SparkPost Ingest response: 200 OK, results.id=mock test passed")
+}
+
+func checkLog(t *testing.T, waitfor int, myLogp *bytes.Buffer, expected string) {
+	// Wait for processes to log something
+	res := ""
+	count := 0
+	for res == "" {
+		time.Sleep(1 * time.Second)
+		count++
+		if count > waitfor {
+			t.Error(fmt.Sprintf("Waited %v seconds and no response - exiting", waitfor))
+			break
+		}
+		res = retrieveLog(myLogp)
+	}
+	time.Sleep(testTime * 2)
+	res = retrieveLog(myLogp)
+	fmt.Println(res)
+	if !strings.Contains(res, expected) {
+		t.Error(res)
+	}
+}
+
+func mockEvents(t *testing.T, nEvents int, client *redis.Client) {
 	// Build a test event
 	msgID := testMessageID
 	var e spmta.TrackEvent
@@ -173,29 +212,15 @@ func TestFeedForever(t *testing.T) {
 		t.Errorf("Error %v", err)
 	}
 	msgIDKey := spmta.TrackingPrefix + msgID
-	ttl := time.Duration(testTime * 10) // expires fairly quickly after test run
+	ttl := time.Duration(testTime * 20) // expires fairly quickly after test run
 	_, err = client.Set(msgIDKey, enrichmentJSON, ttl).Result()
 	if err != nil {
 		t.Errorf("Error %v", err)
 	}
 
-	if _, err = client.RPush(spmta.RedisQueue, eBytes).Result(); err != nil {
-		t.Errorf("Error %v", err)
-	}
-
-	// Wait for processes to log something
-	res := ""
-	count := 0
-	for res == "" {
-		time.Sleep(1 * time.Second)
-		count++
-		if count > 20 {
-			t.Error("Waited 20 seconds and no response - exiting")
-			break
+	for i := 0; i < nEvents; i++ {
+		if _, err = client.RPush(spmta.RedisQueue, eBytes).Result(); err != nil {
+			t.Errorf("Error %v", err)
 		}
-		res = retrieveLog(myLogp)
-	}
-	if !strings.Contains(res, "SparkPost Ingest response: 200 OK, results.id=mock test passed") {
-		t.Error(res)
 	}
 }
