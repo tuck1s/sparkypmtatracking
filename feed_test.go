@@ -1,11 +1,13 @@
 package sparkypmtatracking_test
 
 import (
+	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -23,6 +25,19 @@ const testUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebK
 const testIPAddress = "12.34.56.78"
 const testTime = 5 * time.Second
 const testSubaccountID = 3
+
+// Capture the usual log output into a memory buffer, for later verification
+func captureLog() *bytes.Buffer {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	log.SetFlags(0) // disable date/time prefix as it makes hard to compare
+	return &buf
+}
+
+// Retrieve log output as a string
+func retrieveLog(bptr *bytes.Buffer) string {
+	return (*bptr).String()
+}
 
 // checkHeaders walks through the headers and checks against expected values
 func checkHeaders(h http.Header, chk map[string]string) error {
@@ -119,6 +134,7 @@ func startMockIngest(t *testing.T, addrPort string) {
 
 // Test the feeder function by creating a mockup endpoint that will receive data that we push to it
 func TestFeedForever(t *testing.T) {
+	myLogp := captureLog()
 	p := rand.Intn(1000) + 8000
 	mockIngestAddrPort := ":" + strconv.Itoa(p)
 
@@ -167,9 +183,19 @@ func TestFeedForever(t *testing.T) {
 		t.Errorf("Error %v", err)
 	}
 
-	// Wait for processes to run
-	time.Sleep(2 * testTime)
-
-	// TODO: Check if results happened in the logfile. Our goroutines will keep running until all the tests are done
-	fmt.Println("Done")
+	// Wait for processes to log something
+	res := ""
+	count := 0
+	for res == "" {
+		time.Sleep(1 * time.Second)
+		count++
+		if count > 20 {
+			t.Error("Waited 20 seconds and no response - exiting")
+			break
+		}
+		res = retrieveLog(myLogp)
+	}
+	if res != "Uploaded 491 bytes raw, 379 bytes gzipped. SparkPost Ingest response: 200 OK, results.id=mock test passed\n" {
+		t.Error(res)
+	}
 }
