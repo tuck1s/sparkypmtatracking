@@ -195,7 +195,7 @@ func TestFeedForever(t *testing.T) {
 		}
 		res = retrieveLog(myLogp)
 	}
-	if res != "Uploaded 491 bytes raw, 379 bytes gzipped. SparkPost Ingest response: 200 OK, results.id=mock test passed\n" {
+	if !strings.Contains(res, "SparkPost Ingest response: 200 OK, results.id=mock test passed") {
 		t.Error(res)
 	}
 }
