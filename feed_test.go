@@ -22,10 +22,11 @@ import (
 const mockAPIKey = "xyzzy"
 const testAction = "c" // click
 const testURL = "http://example.com/this/is/a/test"
-const testUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/603.3.8 (KHTML, like Gecko)"
+const testUserAgent = "Some Lovely Browser User Agent String"
 const testIPAddress = "12.34.56.78"
-const testTime = 5 * time.Second
+const testTime = 2 * time.Second
 const testSubaccountID = 3
+const testMockBatchResponse = "mock test passed"
 
 // Capture the usual log output into a memory buffer, for later verification
 func captureLog() *bytes.Buffer {
@@ -115,7 +116,7 @@ func ingestServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Success
-	eJSON := `{"results": {"id": "mock test passed"} }`
+	eJSON := fmt.Sprintf(`{"results": {"id": "%s"} }`, testMockBatchResponse)
 	w.Write([]byte(eJSON))
 }
 
@@ -151,18 +152,18 @@ func TestFeedForever(t *testing.T) {
 	// Start the feeder process concurrently. We don't have to wait the usual time
 	go spmta.FeedForever(client, "http://"+mockIngestAddrPort, mockAPIKey, testTime)
 
-	fmt.Println("One event")
+	t.Log("One event")
 	myLogp := captureLog()
 	mockEvents(t, 1, client)
-	checkLog(t, 20, myLogp, "SparkPost Ingest response: 200 OK, results.id=mock test passed")
+	checkLog(t, 20, myLogp, testMockBatchResponse, 1)
 
-	fmt.Println("Many events")
+	t.Log("Many events")
 	myLogp = captureLog()
 	mockEvents(t, 12000, client)
-	checkLog(t, 20, myLogp, "SparkPost Ingest response: 200 OK, results.id=mock test passed")
+	checkLog(t, 20, myLogp, testMockBatchResponse, 2) // two batches
 }
 
-func checkLog(t *testing.T, waitfor int, myLogp *bytes.Buffer, expected string) {
+func checkLog(t *testing.T, waitfor int, myLogp *bytes.Buffer, expected string, times int) {
 	// Wait for processes to log something
 	res := ""
 	count := 0
@@ -175,10 +176,10 @@ func checkLog(t *testing.T, waitfor int, myLogp *bytes.Buffer, expected string) 
 		}
 		res = retrieveLog(myLogp)
 	}
-	time.Sleep(testTime * 2)
+	time.Sleep(testTime)
 	res = retrieveLog(myLogp)
-	fmt.Println(res)
-	if !strings.Contains(res, expected) {
+	t.Log(res)
+	if strings.Count(res, expected) != times {
 		t.Error(res)
 	}
 }
