@@ -76,7 +76,7 @@ func Contains(a []string, x string) bool {
 // SafeStringToInt logs an error and returns zero if it can't convert
 func SafeStringToInt(s string) int {
 	if s == "" {
-		return 0 // Handle case where master account has blank/no header in data
+		return 0
 	}
 	i, err := strconv.Atoi(s)
 	if err != nil {

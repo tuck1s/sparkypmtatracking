@@ -41,6 +41,27 @@ func retrieveLog(bptr *bytes.Buffer) string {
 	return (*bptr).String()
 }
 
+// Wait for processes to log something for a defined number of seconds, look for a number of occurrences of an expected string
+func checkLog(t *testing.T, waitfor int, myLogp *bytes.Buffer, expected string, times int) {
+	res := ""
+	count := 0
+	for res == "" {
+		time.Sleep(1 * time.Second)
+		count++
+		if count > waitfor {
+			t.Error(fmt.Sprintf("Waited %v seconds and no response - exiting", waitfor))
+			break
+		}
+		res = retrieveLog(myLogp)
+	}
+	time.Sleep(testTime)
+	res = retrieveLog(myLogp)
+	t.Log(res)
+	if strings.Count(res, expected) != times {
+		t.Error(res)
+	}
+}
+
 // checkHeaders walks through the headers and checks against expected values
 func checkHeaders(h http.Header, chk map[string]string) error {
 	for k, v := range chk {
@@ -161,27 +182,6 @@ func TestFeedForever(t *testing.T) {
 	myLogp = captureLog()
 	mockEvents(t, 12000, client)
 	checkLog(t, 20, myLogp, testMockBatchResponse, 2) // two batches
-}
-
-func checkLog(t *testing.T, waitfor int, myLogp *bytes.Buffer, expected string, times int) {
-	// Wait for processes to log something
-	res := ""
-	count := 0
-	for res == "" {
-		time.Sleep(1 * time.Second)
-		count++
-		if count > waitfor {
-			t.Error(fmt.Sprintf("Waited %v seconds and no response - exiting", waitfor))
-			break
-		}
-		res = retrieveLog(myLogp)
-	}
-	time.Sleep(testTime)
-	res = retrieveLog(myLogp)
-	t.Log(res)
-	if strings.Count(res, expected) != times {
-		t.Error(res)
-	}
 }
 
 func mockEvents(t *testing.T, nEvents int, client *redis.Client) {
