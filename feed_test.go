@@ -225,3 +225,61 @@ func mockEvents(t *testing.T, nEvents int, client *redis.Client) {
 		}
 	}
 }
+
+// Detailed unit tests
+
+func TestFeedEventsErrorCases(t *testing.T) {
+	client := spmta.MyRedis()
+	client.Close() // deliberately close the connection before using
+	err := spmta.FeedEvents(client, "http://example.com", "", testTime)
+	if err.Error() != "redis: client is closed" {
+		t.Errorf("Error %v", err)
+	}
+}
+
+func TestAgedContent(t *testing.T) {
+	// no content, not aged
+	tBuf := spmta.TimedBuffer{
+		Content:     []byte(""),
+		TimeStarted: time.Now(),
+		MaxAge:      10 * time.Second,
+	}
+	res := tBuf.AgedContent()
+	if res {
+		t.Errorf("Unexpected value")
+	}
+
+	// content, not aged
+	tBuf = spmta.TimedBuffer{
+		Content:     []byte("Some content"),
+		TimeStarted: time.Now(),
+		MaxAge:      10 * time.Second,
+	}
+	res = tBuf.AgedContent()
+	if res {
+		t.Errorf("Unexpected value")
+	}
+
+	// no content, aged
+	tBuf = spmta.TimedBuffer{
+		Content: []byte(""),
+		// have to add a negative duration, see https://golang.org/pkg/time/#example_Time_Sub
+		TimeStarted: time.Now().Add(-30 * time.Second),
+		MaxAge:      10 * time.Second,
+	}
+	res = tBuf.AgedContent()
+	if res {
+		t.Errorf("Unexpected value")
+	}
+
+	// content, aged
+	tBuf = spmta.TimedBuffer{
+		Content:     []byte("Some content"),
+		TimeStarted: time.Now().Add(-2 * time.Second),
+		MaxAge:      1 * time.Second,
+	}
+	res = tBuf.AgedContent()
+	if !res {
+		t.Errorf("Unexpected value")
+	}
+}

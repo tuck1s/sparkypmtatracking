@@ -34,6 +34,5 @@ func main() {
 		spmta.ConsoleAndLogFatal(fmt.Sprintf("%s not set - stopping", spAPIKeyEnvVar))
 	}
 
-	// Process events forever
 	spmta.FeedForever(spmta.MyRedis(), host, apiKey, spmta.SparkPostIngestBatchMaxAge)
 }

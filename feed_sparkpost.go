@@ -61,19 +61,17 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (SparkPostEvent, erro
 }
 
 // Enrich and format a SparkPost event into NDJSON
-func sparkPostEventNDJSON(eStr string, client *redis.Client) []byte {
+func sparkPostEventNDJSON(eStr string, client *redis.Client) ([]byte, error) {
 	e, err := makeSparkPostEvent(eStr, client)
 	if err != nil {
-		log.Println(err.Error())
-		return nil
+		return nil, err
 	}
 	eJSON, err := json.Marshal(e)
 	if err != nil {
-		log.Println(err.Error())
-		return nil
+		return nil, err
 	}
 	eJSON = append(eJSON, byte('\n'))
-	return eJSON
+	return eJSON, nil
 }
 
 // Prepare a batch of TrackingEvents for ingest to SparkPost.
@@ -131,55 +129,63 @@ func sparkPostIngest(ingestData []byte, client *redis.Client, host string, apiKe
 	return err
 }
 
-type myTimedBuffer struct {
-	content     []byte
-	timeStarted time.Time
-	maxAge      time.Duration
+// TimedBuffer associates content with a time started and a maximum age it should be held for
+type TimedBuffer struct {
+	Content     []byte
+	TimeStarted time.Time
+	MaxAge      time.Duration
 }
 
-// matureContent returns true if the buffer has contents that are now older than the specified maturity time
-func (t *myTimedBuffer) matureContent() bool {
-	age := time.Since(t.timeStarted)
-	return len(t.content) > 0 && age >= t.maxAge
+// AgedContent returns true if the buffer has non-nil contents that are older than the specified maxAge
+func (t *TimedBuffer) AgedContent() bool {
+	age := time.Since(t.TimeStarted)
+	return len(t.Content) > 0 && age >= t.MaxAge
 }
 
-// FeedForever sends data arriving via Redis queue to SparkPost ingest API.
+// FeedEvents sends data arriving via Redis queue to SparkPost ingest API.
 // Send a batch periodically, or every X MB, whichever comes first.
-func FeedForever(client *redis.Client, host string, apiKey string, maxAge time.Duration) {
-	var tBuf myTimedBuffer
-	tBuf.content = make([]byte, 0, SparkPostIngestMaxPayload) // Pre-allocate for efficiency
-	tBuf.maxAge = maxAge
+func FeedEvents(client *redis.Client, host string, apiKey string, maxAge time.Duration) error {
+	var tBuf TimedBuffer
+	tBuf.Content = make([]byte, 0, SparkPostIngestMaxPayload) // Pre-allocate for efficiency
+	tBuf.MaxAge = maxAge
 	for {
 		d, err := client.LPop(RedisQueue).Result()
 		if err == redis.Nil {
-			// Queue is now empty - send this batch if it's old enough
-			if tBuf.matureContent() {
-				err = sparkPostIngest(tBuf.content, client, host, apiKey)
-				if err != nil {
-					log.Println(err)
-				}
-				tBuf.content = tBuf.content[:0] // empty the data, but keep capacity allocated
+			// Queue is now empty - send this batch if it's old enough, and return
+			if tBuf.AgedContent() {
+				return sparkPostIngest(tBuf.Content, client, host, apiKey)
 			}
 			time.Sleep(1 * time.Second) // polling wait time
 			continue
 		}
 		if err != nil {
-			log.Println(err) // report a Redis error
-			continue
+			return err
 		}
-		thisEvent := sparkPostEventNDJSON(d, client)
+		thisEvent, err := sparkPostEventNDJSON(d, client)
+		if err != nil {
+			return err
+		}
 		// If this event would make the content oversize, send what we already have
-		if len(tBuf.content)+len(thisEvent) >= SparkPostIngestMaxPayload {
-			err = sparkPostIngest(tBuf.content, client, host, apiKey)
+		if len(tBuf.Content)+len(thisEvent) >= SparkPostIngestMaxPayload {
+			err = sparkPostIngest(tBuf.Content, client, host, apiKey)
 			if err != nil {
-				log.Println(err)
+				return err
 			}
-			tBuf.content = tBuf.content[:0] // empty the data, but keep capacity allocated
+			tBuf.Content = tBuf.Content[:0] // empty the data, but keep capacity allocated
 		}
-		if len(tBuf.content) == 0 {
+		if len(tBuf.Content) == 0 {
 			// mark time of this event being placed into an empty buffer
-			tBuf.timeStarted = time.Now()
+			tBuf.TimeStarted = time.Now()
 		}
-		tBuf.content = append(tBuf.content, thisEvent...)
+		tBuf.Content = append(tBuf.Content, thisEvent...)
+	}
+}
+
+// FeedForever processes events forever
+func FeedForever(client *redis.Client, host string, apiKey string, maxAge time.Duration) {
+	for {
+		if err := FeedEvents(client, host, apiKey, maxAge); err != nil {
+			log.Println(err)
+		}
 	}
 }
