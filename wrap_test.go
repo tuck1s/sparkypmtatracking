@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	trk "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
 const testHTML = `<!DOCTYPE html>
@@ -85,7 +85,7 @@ func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error
 }
 
 func TestTrackHTML(t *testing.T) {
-	myWrapper, err := trk.NewWrapper(testTrackingDomain)
+	myWrapper, err := spmta.NewWrapper(testTrackingDomain)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestTrackHTML(t *testing.T) {
 
 	// with a trailing "/"
 	expectedURL := testTrackingDomain + "/"
-	myWrapper, err = trk.NewWrapper(expectedURL)
+	myWrapper, err = spmta.NewWrapper(expectedURL)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestTrackHTML(t *testing.T) {
 
 	// with a longer path
 	expectedURL = testTrackingDomain + "/" + testTrackingPath
-	myWrapper, err = trk.NewWrapper(expectedURL)
+	myWrapper, err = spmta.NewWrapper(expectedURL)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestTrackHTML(t *testing.T) {
 
 func TestTrackHTMLfaultyInputs(t *testing.T) {
 	// With uninitialised tracker, pixels should return empty string
-	myTracker := trk.Wrapper{}
+	myTracker := spmta.Wrapper{}
 	s := myTracker.InitialOpenPixel()
 	if s != "" {
 		t.Errorf("Expecting empty result from InitialOpenPixel, got %s", s)
@@ -143,31 +143,54 @@ func TestTrackHTMLfaultyInputs(t *testing.T) {
 
 func TestNewTracker(t *testing.T) {
 	// faulty inputs: malformed URLs are rejected
-	_, err := trk.NewWrapper("httttps://not a url")
+	_, err := spmta.NewWrapper("httttps://not a url")
 	if err == nil {
 		t.Errorf("Faulty input test should have failed")
 	}
 
-	_, err = trk.NewWrapper("https://example.com/?pet=dog")
+	_, err = spmta.NewWrapper("https://example.com/?pet=dog")
 	if err == nil {
 		t.Errorf("Faulty input test should have failed")
 	}
 }
 
 func TestUniqMessageID(t *testing.T) {
-	x := trk.UniqMessageID()
+	x := spmta.UniqMessageID()
 	if len(x) != 20 {
 		t.Errorf("Unexpected result from UniqMessageID")
 	}
 
-	y := trk.UniqMessageID()
+	y := spmta.UniqMessageID()
 	if x == y {
 		t.Errorf("UniqMessageID returned two consecutive identical values %s and %s. Pigs are now flying", x, y)
 	}
 }
 
+func TestActionToType(t *testing.T) {
+	if spmta.ActionToType("i") != "initial_open" {
+		t.Errorf("Unexpected value returned from ActionToType")
+	}
+
+	if spmta.ActionToType("o") != "open" {
+		t.Errorf("Unexpected value returned from ActionToType")
+	}
+
+	if spmta.ActionToType("c") != "click" {
+		t.Errorf("Unexpected value returned from ActionToType")
+	}
+
+	// faulty inputs
+	if spmta.ActionToType("") != "" {
+		t.Errorf("Unexpected value returned from ActionToType")
+	}
+
+	if spmta.ActionToType(" ") != "" {
+		t.Errorf("Unexpected value returned from ActionToType")
+	}
+}
+
 func TestTrackHTMLFaultyInputs(t *testing.T) {
-	myTracker, err := trk.NewWrapper(testTrackingDomain)
+	myTracker, err := spmta.NewWrapper(testTrackingDomain)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
@@ -187,11 +210,11 @@ func TestEncodeDecodePath(t *testing.T) {
 		if err != nil {
 			t.Errorf(err.Error())
 		}
-		enc, err := trk.EncodePath(expected)
+		enc, err := spmta.EncodePath(expected)
 		if err != nil {
 			t.Errorf(err.Error())
 		}
-		got, err := trk.DecodePath(enc)
+		got, err := spmta.DecodePath(enc)
 		if err != nil {
 			t.Errorf(err.Error())
 		}

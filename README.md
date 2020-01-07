@@ -8,12 +8,14 @@
 
 Open and click tracking modules for PMTA and SparkPost Signals:
 
+<img src="doc-img/open_click_tracking_for_signals_for_powermta.svg"/>
+
 |app|description|
 |---|---|
+|`feeder`|Takes open & click events, correlates them and feeds them to the SparkPost Signals [Ingest API](https://developers.sparkpost.com/api/events-ingest/)|
 |`wrapper`|SMTP proxy service that adds engagement information to email
 |`acct_etl`|Extract, transform, load piped PMTA custom accounting stream into Redis|
 |`tracker`|Web service that decodes client email opens and clicks|
-|`feeder`|Takes open & click events, correlates them and feeds them to the SparkPost Signals [Ingest API](https://developers.sparkpost.com/api/events-ingest/)|
 
 ## Pre-requisites
 - Git & Golang - installation tips [here](#installing-git-golang-on-your-host)
@@ -38,6 +40,37 @@ go get gopkg.in/natefinch/lumberjack.v2
 ```
 
 Run the `./build.sh` script included in the project, to build each app.
+
+## feeder
+
+The feeder task reads events from the Redis queue and feeds them to the SparkPost Ingest API.
+
+```
+./feeder -h
+Takes the opens and clicks from the Redis queue and feeds them to the SparkPost Ingest API
+Requires environment variable SPARKPOST_API_KEY_INGEST and optionally SPARKPOST_HOST_INGEST
+Usage of ./feeder:
+  -logfile string
+        File written with message logs
+```
+
+If you omit-logfile, output will go to the console (stdout).
+The SparkPost ingest API key (and optionally, the host base URL) is passed in environment variables:
+
+```
+export SPARKPOST_API_KEY_INGEST=###your API key here##
+export SPARKPOST_HOST_INGEST=api.sparkpost.com
+```
+
+You’ll typically want to run this as a background process on startup - see the project cronfile and start.sh for examples of how to do that.
+
+The logfile shows number of events, GZipped upload size, Ingest API response and Batch ID.
+
+```
+2020/01/07 16:00:44 Uploaded 82559 bytes raw, 4881 bytes gzipped. SparkPost Ingest response: 200 OK, results.id=deea5e3e-7e03-4b3c-831b-1b2851190db1
+2020/01/07 16:10:41 Uploaded 84612 bytes raw, 5104 bytes gzipped. SparkPost Ingest response: 200 OK, results.id=a567ec74-c1e0-4546-86bd-dbd838315e71
+2020/01/07 16:20:41 Uploaded 31974 bytes raw, 2265 bytes gzipped. SparkPost Ingest response: 200 OK, results.id=36e9b2d7-ea54-4fc5-8ed0-7f5696623464
+``` 
 
 ## wrapper
 
@@ -194,11 +227,15 @@ PMTA config needs to have the following accounting pipe. An example config file 
 |vmtaPool|IP Pool (name)|
 
 
-# test your build worked OK on example file. This should write log entries in your current dir.
+test your build worked OK on example file. This should write log entries in your current dir.
+```
 ./acct_etl --logfile acct_etl.log --infile example.csv
 cat acct_etl.log
+```
 
-# copy executable to a place where PMTA can run it, and set owner. Need to temporarily stop PMTA
+copy executable to a place where PMTA can run it, and set owner. Need to temporarily stop PMTA
+
+```
 sudo service pmta stop
 sudo cp acct_etl /usr/local/bin/acct_etl
 sudo chown pmta:pmta /usr/local/bin/acct_etl
@@ -207,6 +244,7 @@ sudo service pmta start
 Check your PMTA log, there should not be startup errors.
 
 Logfile `/opt/pmta/acct_etl.log` should show
+
 ```
 2019/07/02 17:26:15 PMTA accounting headers from pipe[type orig rcpt header_x-sp-message-id header_x-tracking-id]
 2019/07/02 17:26:15 as expected by this application
@@ -266,20 +304,6 @@ It's usual to deploy a proxy such as `nginx` in front of this service; an exampl
 
 ---
 
-## feeder
-
-The feeder task reads events from the Redis queue and feeds them to the
-SparkPost Ingest API.
-
-Check local logfile with `feeder.log`. The number of events, GZipped upload
-size, Ingest API response and Batch ID are logged.
-
-```
-2019/07/25 14:52:05 Uploaded 1 events 483 bytes (gzip), SparkPost Ingest response: 200 OK results.id= 6984b656-034e-40d8-89ab-f4dd33a41d49
-``` 
-
-
----
 
 ## Starting these applications on boot
 Script `start.sh` is provided for this purpose. You can make it run on boot using

@@ -53,7 +53,7 @@ func HostCleanup(host string) string {
 
 //-----------------------------------------------------------------------------
 
-// PositionIn returns the position of a value within an array of strings, and whether found or not
+// PositionIn returns the position of a value within an array of strings, if an element exactly matches val
 func PositionIn(arr []string, val string) (int, bool) {
 	for i, v := range arr {
 		if v == val {
@@ -63,14 +63,10 @@ func PositionIn(arr []string, val string) (int, bool) {
 	return 0, false
 }
 
-// Contains tells whether a contains x
-func Contains(a []string, x string) bool {
-	for _, n := range a {
-		if x == n {
-			return true
-		}
-	}
-	return false
+// Contains returns whether arr contains an element exactly matching val
+func Contains(arr []string, val string) bool {
+	_, found := PositionIn(arr, val)
+	return found
 }
 
 // SafeStringToInt logs an error and returns zero if it can't convert

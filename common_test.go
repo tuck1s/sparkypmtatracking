@@ -10,6 +10,8 @@ import (
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
+// Can't test ConsoleAndLogFatal() as it exits
+
 func TestMyLogger(t *testing.T) {
 	f := "common_test.log"
 	spmta.MyLogger(f)
@@ -50,10 +52,12 @@ func TestHostCleanup(t *testing.T) {
 	}
 }
 
+var haystack = []string{"the", "rain", "in", "spain", "falls", "mainly", "on", "the", "plain"}
+
+const needle = "spain"
+const miss = "snow"
+
 func TestPositionIn(t *testing.T) {
-	haystack := []string{"the", "rain", "in", "spain", "falls", "mainly", "on", "the", "plain"}
-	needle := "spain"
-	miss := "snow"
 	p, found := spmta.PositionIn(haystack, needle)
 	if p != 3 || !found {
 		t.Errorf("Unexpected value")
@@ -67,6 +71,17 @@ func TestPositionIn(t *testing.T) {
 		t.Errorf("Unexpected value")
 	}
 
+}
+
+func TestContains(t *testing.T) {
+	found := spmta.Contains(haystack, needle)
+	if !found {
+		t.Errorf("Unexpected value")
+	}
+	found = spmta.Contains(haystack, miss)
+	if found {
+		t.Errorf("Unexpected value")
+	}
 }
 
 func TestSafeStringToInt(t *testing.T) {
@@ -85,4 +100,12 @@ func TestSafeStringToInt(t *testing.T) {
 	if v := spmta.SafeStringToInt("kittens"); v != 0 {
 		t.Errorf(fmt.Sprintf("Unexpected value %d", v))
 	}
+}
+
+func TestMyRedis(t *testing.T) {
+	r := spmta.MyRedis()
+	if r == nil {
+		t.Errorf("Unexpected value")
+	}
+	r.Close()
 }
