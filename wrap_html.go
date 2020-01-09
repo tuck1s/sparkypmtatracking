@@ -11,6 +11,7 @@ import (
 	"net/mail"
 	"net/url"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -105,6 +106,24 @@ func (wrap *Wrapper) Active() bool {
 	return wrap != nil
 }
 
+// EncodeLink - convenience function
+func EncodeLink(encodeTrackingURL, encodeAction, encodeMessageID, encodeRcptTo, encodeTargetLinkURL string) (string, error) {
+	w, err := NewWrapper(encodeTrackingURL)
+	if err != nil {
+		return "", err
+	}
+	w.SetMessageInfo(encodeMessageID, encodeRcptTo)
+	switch encodeAction {
+	case "open":
+		return w.wrap("o", ""), nil
+	case "initial_open":
+		return w.wrap("i", ""), nil
+	case "click":
+		return w.WrapURL(encodeTargetLinkURL), nil
+	}
+	return "", nil
+}
+
 // InitialOpenPixel returns an html fragment with pixel for initial open tracking.
 // If there are problems, empty string is returned.
 func (wrap *Wrapper) InitialOpenPixel() string {
@@ -176,6 +195,27 @@ func EncodePath(data []byte) (string, error) {
 	return b64s, nil
 }
 
+// DecodeLink - convenience function. returns JSON intermediate form, decoded Wrapper data, and tracking domain
+func DecodeLink(urlStr string) ([]byte, WrapperData, string, error) {
+	var wd WrapperData
+	url, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, wd, "", err
+	}
+	decodeTrackingDomain := url.Scheme + "://" + url.Host
+
+	pathBytes := strings.Split(url.Path, "/") // should be only one / separator
+	if len(pathBytes) != 2 || pathBytes[0] != "" {
+		return nil, wd, decodeTrackingDomain, errors.New("Unexpected URL path with more than one /")
+	}
+	eBytes, err := DecodePath(pathBytes[1])
+	if err != nil {
+		return eBytes, wd, decodeTrackingDomain, err
+	}
+	err = json.Unmarshal(eBytes, &wd)
+	return eBytes, wd, decodeTrackingDomain, err
+}
+
 // DecodePath returns the zlib-decoded, base64-decoded version of a url path string as []byte
 func DecodePath(s string) ([]byte, error) {
 	zData, err := base64.URLEncoding.DecodeString(s)
@@ -183,10 +223,10 @@ func DecodePath(s string) ([]byte, error) {
 		return nil, err
 	}
 	zr, err := zlib.NewReader(bytes.NewReader(zData))
-	defer zr.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer zr.Close()
 	var dBuf bytes.Buffer
 	if _, err := io.Copy(&dBuf, zr); err != nil {
 		return nil, err

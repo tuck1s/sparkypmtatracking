@@ -3,6 +3,7 @@ package sparkypmtatracking_test
 import (
 	"bytes"
 	"crypto/rand"
+	"fmt"
 	"io"
 	"strings"
 	"testing"
@@ -29,6 +30,7 @@ const testMessageID = "0000123456789abcdef0"
 const testRecipient = "recipient@example.com"
 const testTrackingDomain = "http://tracking.example.com"
 const testTrackingPath = "wibble/wobble"
+const testTargetURL = "https://sparkpost.com/"
 
 const expectedHTMLoutput = `<!DOCTYPE html>
 <html lang="en">
@@ -223,4 +225,28 @@ func TestEncodeDecodePath(t *testing.T) {
 
 		}
 	}
+}
+
+func TestEncodeDecodeLink(t *testing.T) {
+	url, err := spmta.EncodeLink(testTrackingDomain, "click", testMessageID, testRecipient, testTargetURL)
+	if err != nil {
+		t.Error(err)
+	}
+	eBytes, wd, decodeTrackingURL, err := spmta.DecodeLink(url)
+	if err != nil {
+		t.Error(err)
+	}
+	got := string(eBytes)
+	expected := fmt.Sprintf(`{"act":"%s","t_url":"%s","msg_id":"%s","rcpt":"%s"}`,
+		"c",
+		testTargetURL,
+		testMessageID,
+		testRecipient)
+	if string(eBytes) != expected {
+		t.Errorf("EncodeLink/DecodeLink JSON Got and expected values differ:\n---Got\n%s\n\n---Expected\n%s\n", got, expected)
+	}
+	if wd.Action != "c" || wd.TargetLinkURL != testTargetURL || wd.MessageID != testMessageID || wd.RcptTo != testRecipient {
+		t.Errorf("EncodeLink/DecodeLink WD Got and expected values differ:\n---Got\n%s\n", wd)
+	}
+	fmt.Println(string(eBytes), wd, decodeTrackingURL)
 }
