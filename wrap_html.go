@@ -168,7 +168,7 @@ func EncodePath(data []byte) (string, error) {
 	if _, err := zw.Write(data); err != nil {
 		return "", err
 	}
-	// Meed tp close the writer to push output through
+	// Meed to close the writer to push output through
 	if err := zw.Close(); err != nil {
 		return "", err
 	}

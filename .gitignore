@@ -20,3 +20,4 @@ wrapper
 # local test files
 setenvs.sh
 trk_queue.sh
+example*.eml

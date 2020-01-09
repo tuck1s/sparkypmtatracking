@@ -161,7 +161,29 @@ func TestFeedForever(t *testing.T) {
 	// Start the mock SparkPost endpoint server concurrently
 	go startMockIngest(t, mockIngestAddrPort)
 	client := spmta.MyRedis()
+	// Start the feeder process concurrently. We don't have to wait the usual time
+	go spmta.FeedForever(client, "http://"+mockIngestAddrPort, mockAPIKey, testTime)
 
+	t.Log("One event")
+	myLogp := captureLog()
+	emptyRedisQueue(client)
+	mockEvents(t, 1, client, true)
+	checkLog(t, 20, myLogp, testMockBatchResponse, 1)
+
+	t.Log("Many events")
+	myLogp = captureLog()
+	emptyRedisQueue(client)
+	mockEvents(t, 12000, client, true)
+	checkLog(t, 20, myLogp, testMockBatchResponse, 2) // two batches
+
+	t.Log("One event with no message_id in redis")
+	myLogp = captureLog()
+	emptyRedisQueue(client)
+	mockEvents(t, 1, client, false)
+	checkLog(t, 20, myLogp, testMockBatchResponse, 1)
+}
+
+func emptyRedisQueue(client *redis.Client) {
 	// Make sure redis queue is empty
 	for {
 		_, err := client.LPop(spmta.RedisQueue).Result()
@@ -169,22 +191,9 @@ func TestFeedForever(t *testing.T) {
 			break
 		}
 	}
-
-	// Start the feeder process concurrently. We don't have to wait the usual time
-	go spmta.FeedForever(client, "http://"+mockIngestAddrPort, mockAPIKey, testTime)
-
-	t.Log("One event")
-	myLogp := captureLog()
-	mockEvents(t, 1, client)
-	checkLog(t, 20, myLogp, testMockBatchResponse, 1)
-
-	t.Log("Many events")
-	myLogp = captureLog()
-	mockEvents(t, 12000, client)
-	checkLog(t, 20, myLogp, testMockBatchResponse, 2) // two batches
 }
 
-func mockEvents(t *testing.T, nEvents int, client *redis.Client) {
+func mockEvents(t *testing.T, nEvents int, client *redis.Client, enrich bool) {
 	// Build a test event
 	msgID := testMessageID
 	var e spmta.TrackEvent
@@ -203,20 +212,22 @@ func mockEvents(t *testing.T, nEvents int, client *redis.Client) {
 		t.Errorf("Error %v", err)
 	}
 
-	// Create a fake acct_etl enrichment record in Redis
-	enrichment := map[string]string{
-		"header_x-sp-subaccount-id": strconv.Itoa(testSubaccountID),
-		"rcpt":                      testRecipient,
-	}
-	enrichmentJSON, err := json.Marshal(enrichment)
-	if err != nil {
-		t.Errorf("Error %v", err)
-	}
-	msgIDKey := spmta.TrackingPrefix + msgID
-	ttl := time.Duration(testTime * 20) // expires fairly quickly after test run
-	_, err = client.Set(msgIDKey, enrichmentJSON, ttl).Result()
-	if err != nil {
-		t.Errorf("Error %v", err)
+	if enrich {
+		// Create a fake acct_etl enrichment record in Redis
+		enrichment := map[string]string{
+			"header_x-sp-subaccount-id": strconv.Itoa(testSubaccountID),
+			"rcpt":                      testRecipient,
+		}
+		enrichmentJSON, err := json.Marshal(enrichment)
+		if err != nil {
+			t.Errorf("Error %v", err)
+		}
+		msgIDKey := spmta.TrackingPrefix + msgID
+		ttl := time.Duration(testTime * 20) // expires fairly quickly after test run
+		_, err = client.Set(msgIDKey, enrichmentJSON, ttl).Result()
+		if err != nil {
+			t.Errorf("Error %v", err)
+		}
 	}
 
 	for i := 0; i < nEvents; i++ {

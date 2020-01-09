@@ -10,40 +10,23 @@ Open and click tracking modules for PMTA and SparkPost Signals:
 
 <img src="doc-img/open_click_tracking_for_signals_for_powermta.svg"/>
 
-|app|description|
+|app (link)|description|
 |---|---|
-|`feeder`|Takes open & click events, correlates them and feeds them to the SparkPost Signals [Ingest API](https://developers.sparkpost.com/api/events-ingest/)|
-|`wrapper`|SMTP proxy service that adds engagement information to email
-|`acct_etl`|Extract, transform, load piped PMTA custom accounting stream into Redis|
-|`tracker`|Web service that decodes client email opens and clicks|
+|[feeder](#feeder)|Takes open & click events, adds message attributes from Redis where found, and feeds them to the SparkPost Signals [Ingest API](https://developers.sparkpost.com/api/events-ingest/)|
+|[tracker](#tracker)|Web service that decodes client email opens and clicks|
+|[wrapper](#wrapper)|SMTP proxy service that adds engagement information to email
+|[acct_etl](#acct_etl)|Extract, transform, load piped PMTA custom accounting stream message attributes into Redis|
+|[linktool](#linktool)|Command-line tool to encode and decode link URLs|
 
 ## Pre-requisites
 - Git & Golang - installation tips [here](#installing-git-golang-on-your-host)
 - Redis - installation tips [here](#installing-redis-on-your-host)
-- nginx - installation tips [here](#installing-and-configuring-nginx-proxy)
+- NGINX - installation tips [here](#installing-and-configuring-nginx-proxy)
 
-Get this project with `git clone`, and dependencies with `go get`.
-
-```
-# Let's assume your GOPATH is the usual, i.e.
-export GOPATH=$HOME/go
-
-cd ~/go/src/github.com/
-git clone https://github.com/tuck1s/sparkyPmtaTracking.git
-cd sparkyPmtaTracking/
-
-# Get needed go packages
-go get github.com/go-redis/redis
-go get github.com/smartystreets/scanners/csv
-go get github.com/google/uuid
-go get gopkg.in/natefinch/lumberjack.v2
-```
-
-Run the `./build.sh` script included in the project, to build each app.
-
+Build instructions [here](#build).
 ## feeder
 
-The feeder task reads events from the Redis queue and feeds them to the SparkPost Ingest API.
+The feeder task reads events from the Redis queue in an internal format, and feeds them to the SparkPost Ingest API, with additional attributes from the local database where found.
 
 ```
 ./feeder -h
@@ -54,7 +37,7 @@ Usage of ./feeder:
         File written with message logs
 ```
 
-If you omit-logfile, output will go to the console (stdout).
+If you omit `-logfile`, output will go to the console (stdout).
 The SparkPost ingest API key (and optionally, the host base URL) is passed in environment variables:
 
 ```
@@ -71,6 +54,59 @@ The logfile shows number of events, GZipped upload size, Ingest API response and
 2020/01/07 16:10:41 Uploaded 84612 bytes raw, 5104 bytes gzipped. SparkPost Ingest response: 200 OK, results.id=a567ec74-c1e0-4546-86bd-dbd838315e71
 2020/01/07 16:20:41 Uploaded 31974 bytes raw, 2265 bytes gzipped. SparkPost Ingest response: 200 OK, results.id=36e9b2d7-ea54-4fc5-8ed0-7f5696623464
 ``` 
+
+## tracker
+
+The tracker task runs a web service that decodes client email opens and clicks, provides http responses, and queues events for the feeder task.
+
+```
+ ./tracker -h
+Web service that decodes client email opens and clicks
+Runs in plain mode, it should proxied (e.g. by nginx) to provide https and protection.
+Usage of ./tracker:
+  -in_hostport string
+        host:port to serve incoming HTTP requests (default ":8888")
+  -logfile string
+        File written with message logs
+```
+
+If you omit `-logfile`, output will go to the console (stdout).
+
+The logfile records the action (open/click), target URL, datetime, user_agent, and remote (client) IP address:
+
+```
+2020/01/09 15:40:27 Timestamp 1578584427, IPAddress 127.0.0.1, UserAgent Mozilla/5.0 (Linux; Android 4.4.2; XMP-6250 Build/HAWK) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/30.0.0.0 Safari/537.36 ADAPI/2.0 (UUID:9e7df0ed-2a5c-4a19-bec7-2cc54800f99d) RK3188-ADAPI/1.2.84.533 (MODEL:XMP-6250), Action c, URL http://example.com/index.html, MsgID 00006449175e39c767c2
+2020/01/09 15:40:27 Timestamp 1578584427, IPAddress 127.0.0.1, UserAgent Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36, Action o, URL , MsgID 00006449175eea2bd529
+``` 
+
+You can test your service endpoint locally using `curl` to a link address, such as 
+
+```
+curl -v http://localhost:8888/eJxUzLEOQiEMRuF3-WciGAaTTr4JwbaIUSKBMhnf_Ybxnv18P2Q2EBgOltb4gFDN-iTvraotfs8Lfxsc2nyml4AQdqJZHqqlhCDXGG9wGNw3VYbK_fT-jwAAAP__f2Mg1g==
+```
+
+You should see response headers such as
+```
+< HTTP/1.1 302 Found
+< Content-Type: text/plain
+< Location: https://thetucks.com
+< Server: msys-http
+```
+
+You can make your own test link addresses using [linktool](#linktool).
+
+### Internals
+
+The tracker web service receives URL requests with the path carrying base64-encoded (URL safe), Zlib-compressed, minified JSON.
+
+Each event is augmented with:
+- event type (open, initial_open, click)
+- user agent
+- timestamp (time of opening / clicking)
+
+and sent to the Redis queue for the feeder task (using `RPUSH`).
+
+It's usual to deploy a proxy such as `NGINX` in front of this service; an example  config is given [here](etc/nginx/conf.d/server1.conf).
 
 ## wrapper
 
@@ -263,66 +299,80 @@ You can list these keys with
 redis-cli keys msgID*
 ```
 
----
+## linktool
 
-## tracker
-
-To install:
+Command-line tool to encode and decode link URLs, useful during testing.
 
 ```
-cd ~/go/src/github.com/sparkyPmtaTracking/src/tracker
-go build
-cd ../..
+./linktool -h
+./linktool [encode|decode] encode and decode link URLs
+encode
+  -action string
+        [open|initial_open|click] (default "open")
+  -message_id string
+        message_id (default "0000123456789abcdef0")
+  -rcpt_to string
+        rcpt_to (default "any@example.com")
+  -target_link_url string
+        URL of your target link (default "https://example.com")
+  -tracking_url string
+        URL of your tracking service endpoint (default "http://localhost:8888")
+decode url
 ```
-To test, run from the command line. This will listen on port 8888 for incoming requests.
-```
-src/tracker/tracker &
-```
 
-Test using the following example
-
+Example: encode a URL
 ```
-curl -v localhost:8888/tracking/open/eJxdT81uwyAMfpWI6xqSbolYeuoDrKc9AHKIoawBInCqRlXffVBt0jT5Ytnf750pcAtY46Wd2KFiH5CoOlm_ElafcLXeJLarWFQLSQoFQZjopW3bYS-G_ugD1SGCN8h15GNYvdrqZP2FU9xc2hL3SEXBJSN1DO5X4pgIr0h12f9jn24OCTL4_siHtI5fqKhw_4QiiAZJztlNrnEu3zPRcmgavOVWM3IVXGP9hDd-Jjc_ORHUJQv81N0LGF_LdAI6_T5B1-Nbr4dOTEKrHtnjG0smYWM=
+ ./linktool encode -tracking_url http://localhost:8888 -rcpt_to fred@thetucks.com -action click -target_link_url https://thetucks.com -message_id 00000deadbeeff00d1337
+http://localhost:8888/eJxUzLEOQiEMRuF3-WciGAaTTr4JwbaIUSKBMhnf_Ybxnv18P2Q2EBgOltb4gFDN-iTvraotfs8Lfxsc2nyml4AQdqJZHqqlhCDXGG9wGNw3VYbK_fT-jwAAAP__f2Mg1g==
 ```
 
-Local logfile `tracker.log` displays the action (open/click), target URL, datetime, user_agent, and remote (client) IP address:
-
+Decode a URL
 ```
-2019/08/19 23:06:32 {open http://example.com/index.html  1566252392 curl/7.54.0 ::1}
-``` 
-
-### Internals
-The tracker web service receives URL requests with the path carrying base64-encoded (URL safe), Zlib-compressed, minified JSON.
-Each event is augmented with
-- event type (open, click)
-- user agent
-- timestamp (time of opening / clicking)
-
-and pushed into a Redis queue for the feeder task (using `RPUSH`).
-
-It's usual to deploy a proxy such as `nginx` in front of this service; an example nginx config is given [here](etc/nginx/conf.d/server1.conf).
+./linktool encode -tracking_url http://localhost:8888 -rcpt_to fred@thetucks.com -action click -target_link_url https://thetucks.com -message_id 0000f00dbeef
+tuckbook$ ./linktool decode http://localhost:8888/eJxUzLEOQiEMRuF3-WciGAaTTr4JwbaIUSKBMhnf_Ybxnv18P2Q2EBgOltb4gFDN-iTvraotfs8Lfxsc2nyml4AQdqJZHqqlhCDXGG9wGNw3VYbK_fT-jwAAAP__f2Mg1g==
+{"act":"c","t_url":"https://thetucks.com","msg_id":"00000deadbeeff00d1337","rcpt":"fred@thetucks.com"}
+encode -tracking_url http://localhost:8888 -rcpt_to fred@thetucks.com -action click -target_link_url https://thetucks.com -message_id 00000deadbeeff00d1337
+```
 
 ---
 
+# Build
+First, review the [Pre-requisites](#pre-requisites).
 
-## Starting these applications on boot
-Script `start.sh` is provided for this purpose. You can make it run on boot using
+Get this project with `git clone`, and dependencies with `go get`.
+
+```
+cd $GOPATH/src/github.com/
+git clone https://github.com/tuck1s/sparkyPmtaTracking.git
+cd sparkyPmtaTracking/
+
+# Get needed external go packages
+go get github.com/go-redis/redis
+go get github.com/smartystreets/scanners/csv
+go get github.com/google/uuid
+go get gopkg.in/natefinch/lumberjack.v2
+```
+
+Run the `./build.sh` script included in the project, to build each app.
+
+# Run
+Script `start.sh` is provided as a starting point for you to customise, along with an example `cronfile` that can be used to start services on  boot:
+
 ```
 crontab cronfile
 ```
 or `crontab -e` then paste in cronfile contents.
 
----
 
-# Pre-requisites installation
+# Pre-requisites
 
-### Installing Git, Golang on your host
+## Git, Golang
 Your package manager should install these for you, e.g.
 ```
 sudo yum install git go
 ``` 
 
-### Installing Redis on your host
+## Redis
 
 Redis does not currently seem to be available via a package manager on EC2 Linux.
 
@@ -363,8 +413,8 @@ redis-cli PING
 you should see `PONG`
 
 
-### Installing and configuring nginx proxy
-This provides protection for your application server.
+## NGINX 
+This can provide protection for your open/click tracking server.
 
 ```
 sudo yum install nginx
