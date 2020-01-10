@@ -2,7 +2,6 @@ package sparkypmtatracking_test
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"os"
 	"testing"
@@ -86,19 +85,19 @@ func TestContains(t *testing.T) {
 
 func TestSafeStringToInt(t *testing.T) {
 	if v := spmta.SafeStringToInt("0123456"); v != 123456 {
-		t.Errorf(fmt.Sprintf("Unexpected value %d", v))
+		t.Errorf("Unexpected value %d", v)
 	}
 	if v := spmta.SafeStringToInt(""); v != 0 {
-		t.Errorf(fmt.Sprintf("Unexpected value %d", v))
+		t.Errorf("Unexpected value %d", v)
 	}
 	if v := spmta.SafeStringToInt("     "); v != 0 {
-		t.Errorf(fmt.Sprintf("Unexpected value %d", v))
+		t.Errorf("Unexpected value %d", v)
 	}
 	if v := spmta.SafeStringToInt("-9876"); v != -9876 {
-		t.Errorf(fmt.Sprintf("Unexpected value %d", v))
+		t.Errorf("Unexpected value %d", v)
 	}
 	if v := spmta.SafeStringToInt("kittens"); v != 0 {
-		t.Errorf(fmt.Sprintf("Unexpected value %d", v))
+		t.Errorf("Unexpected value %d", v)
 	}
 }
 

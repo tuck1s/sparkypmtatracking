@@ -94,7 +94,7 @@ relay-domain fbl.pmta.signalsdemo.trymsys.net
 # SparkPost Signals
 #
 # Here we set up ingest to include subaccount ID and message ID supplied by the injecting process via headers.
-# We retain the subaccount ID so that it shows up in the "accounting pipe" for enriching open/click events.
+# We retain the subaccount ID so that it shows up in the "accounting pipe" for augmenting open/click events.
 #
 <signals>
     api-key ## YOUR API KEY HERE ##

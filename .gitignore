@@ -17,6 +17,7 @@ acct_etl
 feeder
 tracker
 wrapper
+linktool
 # local test files
 setenvs.sh
 trk_queue.sh

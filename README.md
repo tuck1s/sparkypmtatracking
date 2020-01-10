@@ -1,4 +1,4 @@
-<a href="https://www.sparkpost.com"><img alt="SparkPost, Inc." src="img/sp-pmta-logo.png" width="200px"/></a>
+<a href="https://www.sparkpost.com"><img alt="SparkPost, Inc." src="doc-img/sp-pmta-logo.png" width="200px"/></a>
 
 [Sign up](https://app.sparkpost.com/join?plan=free-0817?src=Social%20Media&sfdcid=70160000000pqBb&pc=GitHubSignUp&utm_source=github&utm_medium=social-media&utm_campaign=github&utm_content=sign-up) for a SparkPost account and visit our [Developer Hub](https://developers.sparkpost.com) for even more content.
 
@@ -24,8 +24,8 @@ Open and click tracking modules for PMTA and SparkPost Signals:
 - NGINX - installation tips [here](#installing-and-configuring-nginx-proxy)
 
 Build instructions [here](#build).
-## feeder
 
+## feeder
 The feeder task reads events from the Redis queue in an internal format, and feeds them to the SparkPost Ingest API, with additional attributes from the local database where found.
 
 ```
@@ -56,7 +56,6 @@ The logfile shows number of events, GZipped upload size, Ingest API response and
 ``` 
 
 ## tracker
-
 The tracker task runs a web service that decodes client email opens and clicks, provides http responses, and queues events for the feeder task.
 
 ```
@@ -74,7 +73,7 @@ If you omit `-logfile`, output will go to the console (stdout).
 
 The logfile records the action (open/click), target URL, datetime, user_agent, and remote (client) IP address:
 
-```
+```log
 2020/01/09 15:40:27 Timestamp 1578584427, IPAddress 127.0.0.1, UserAgent Mozilla/5.0 (Linux; Android 4.4.2; XMP-6250 Build/HAWK) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/30.0.0.0 Safari/537.36 ADAPI/2.0 (UUID:9e7df0ed-2a5c-4a19-bec7-2cc54800f99d) RK3188-ADAPI/1.2.84.533 (MODEL:XMP-6250), Action c, URL http://example.com/index.html, MsgID 00006449175e39c767c2
 2020/01/09 15:40:27 Timestamp 1578584427, IPAddress 127.0.0.1, UserAgent Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36, Action o, URL , MsgID 00006449175eea2bd529
 ``` 
@@ -95,8 +94,7 @@ You should see response headers such as
 
 You can make your own test link addresses using [linktool](#linktool).
 
-### Internals
-
+### Tracker internals
 The tracker web service receives URL requests with the path carrying base64-encoded (URL safe), Zlib-compressed, minified JSON.
 
 Each event is augmented with:
@@ -107,6 +105,51 @@ Each event is augmented with:
 and sent to the Redis queue for the feeder task (using `RPUSH`).
 
 It's usual to deploy a proxy such as `NGINX` in front of this service; an example  config is given [here](etc/nginx/conf.d/server1.conf).
+
+## acct_etl
+Extracts, transforms and loads accounting data fed by [PMTA pipe](https://download.port25.com/files/UsersGuide.html#examples) into Redis.
+
+```
+ ./acct_etl -h
+Extracts, transforms and loads accounting data fed by PowerMTA pipe into RedisUsage of ./acct_etl:
+  -infile string
+        Input file (omit to read from stdin)
+  -logfile string
+        File written with message logs
+```
+
+Here is an example [PowerMTA config file](etc/pmta/config.example) showing "accounting pipe" setup. The pipe carries message attributes that "feeder" uses to augment the open and click event data.
+
+|PMTA accounting file config|SparkPost term / project usage|
+|--|--|
+|type|d=delivery|
+|rcpt|Recipient (`To:` address)|
+|header_x-sp-message-id|Message ID (added by `wrapper`)|
+|header_x-sp-subaccount-id|Optional subaccount ID. Place in injected message if you wish to use|
+
+### acct_etl internals
+
+You can test without PowerMTA using the included example file:
+```
+./acct_etl -infile example.csv
+```
+
+```log
+2020/01/10 16:55:25 PMTA accounting headers: [type rcpt header_x-sp-message-id header_x-sp-subaccount-id]
+2020/01/10 16:55:25 Loaded acct_headers -> {"header_x-sp-message-id":2,"header_x-sp-subaccount-id":3,"rcpt":1,"type":0} into Redis
+2020/01/10 16:55:25 Loaded msgID_0000123456789abcdef0 -> {"header_x-sp-subaccount-id":"0","rcpt":"test+00102830@not-orange.fr.bouncy-sink.trymsys.net"} into Redis
+2020/01/10 16:55:25 Loaded msgID_0000123456789abcdef1 -> {"header_x-sp-subaccount-id":"1","rcpt":"test+00113980@not-orange.fr.bouncy-sink.trymsys.net"} into Redis
+2020/01/10 16:55:25 Loaded msgID_0000123456789abcdef2 -> {"header_x-sp-subaccount-id":"2","rcpt":"test+00183623@not-orange.fr.bouncy-sink.trymsys.net"} into Redis```
+```
+
+The `start.sh` file copies the `acct_etl` executable to a place where PowerMTA runs it, and sets owner. It temporarily stops and restarts PowerMTA.
+
+Logfile default location for this process is `/opt/pmta/acct_etl.log`.
+
+Redis key/value pairs hold data for each message ID, with a configured time-to-live (matching SparkPost's event retention). You can list these keys with
+```
+redis-cli keys msgID*
+```
 
 ## wrapper
 
@@ -196,11 +239,9 @@ In verbose mode, logfile shows downstream and upstream SMTP conversation traces,
 ```
 
 ### Interfaces to listen on
-
 Note that `-in_hostport localhost:587` accepts traffic sources only from the local machine. To accept traffic on all network interfaces, use `-in_hostport 0.0.0.0:587`.
 
 ### STARTTLS and certificates
-
 STARTTLS support for your downstream client requires:
 - a pair of files, containing matching public certificate & private keys, for your  proxy domain, in `.pem` format;
 - an upstream host that supports STARTTLS;
@@ -212,7 +253,6 @@ Your client, of course, can choose whether to proceed with a plain (insecure) co
 If you have no certificates for your proxy domain, then omit the `-privkeyfile` and `-certfile` flags. 
 
 ### Upstream server certificate validity
-
 The proxy TLS library checks validity of upstream certificates used with TLS.
 If your upstream server has a self-signed, or otherwise invalid certificate, you'll see
 
@@ -224,21 +264,18 @@ Proper solution: install a valid certificate on your upstream server.
 Workaround: you can use the `-insecure_skip_verify` flag to make the proxy tolerant of your upstream server cert.
 
 ### downstream_debug
-
 This option captures the entire conversation on the downstream (client) side, including SMTP cmmands and responses and the DATA phase containing message headers and body.
 
 The file is created afresh each time the program is started (i.e. not appended to).
 Use with caution as debug files can get large.
 
 ### upstream_data_debug
-
 This option captures the DATA phase on the upstream (server) side, containing message headers and body. When engagement tracking is being used, the upstream content will be different to the downstream content as a header is added, links are tracked, and open pixels added.
 
 The file is created afresh each time the program is started (i.e. not appended to).
 Use with caution as debug files can get large.
 
 ### example email files
-
 Some example `.eml` content can be used to send through the wrapper proxy with `swaks`:
  
 ```bash
@@ -247,60 +284,7 @@ swaks --server smtp.proxy.trymsys.net:587 --auth-user SMTP_Injection --auth-pass
 
 ---
 
-## acct_etl
-Extracts, transforms and loads accounting data fed by [PMTA pipe](https://download.port25.com/files/UsersGuide.html#examples) 
-into Redis.
-
-PMTA config needs to have the following accounting pipe. An example config file is [shown here](etc/pmta/config.example). The accounting pipe carries message attributes that are used to enrich the open and click event data:
-
-|PMTA term|SparkPost term|
-|--|--|
-|x-sp-message-id|Message ID|
-|orig|Sender (`From:` address)|
-|rcpt|Recipient (`To:` address)|
-|jobId|Campaign ID (name)|
-|dlvSourceIp|Sending IP (e.g. `10.0.0.1`)|
-|vmtaPool|IP Pool (name)|
-
-
-test your build worked OK on example file. This should write log entries in your current dir.
-```
-./acct_etl --logfile acct_etl.log --infile example.csv
-cat acct_etl.log
-```
-
-copy executable to a place where PMTA can run it, and set owner. Need to temporarily stop PMTA
-
-```
-sudo service pmta stop
-sudo cp acct_etl /usr/local/bin/acct_etl
-sudo chown pmta:pmta /usr/local/bin/acct_etl
-sudo service pmta start
-```
-Check your PMTA log, there should not be startup errors.
-
-Logfile `/opt/pmta/acct_etl.log` should show
-
-```
-2019/07/02 17:26:15 PMTA accounting headers from pipe[type orig rcpt header_x-sp-message-id header_x-tracking-id]
-2019/07/02 17:26:15 as expected by this application
-```
-
-Present some traffic to PMTA, including the `x-sp-message-id` header.
-The logfile should show entries such as
-```
-2019/07/02 17:30:04 Loaded 73277140a64645b0adee046cc7250e1f = F8AD9C941B5DBCA6B208 into Redis, from= test@pmta.signalsdemo.trymsys.net RcptTo= test+00073442@not-gmail.com.bouncy-sink.trymsys.net
-2019/07/02 17:30:04 Loaded 2a889abbbea34370b9a85c902eb5b031 = 697C9C941B5D03CFA658 into Redis, from= test@pmta.signalsdemo.trymsys.net RcptTo= test+00179890@not-yahoo.co.uk.bouncy-sink.trymsys.net
-```
-
-Redis entries (key/value pairs) hold the enrichment data for each message ID, with configured time-to-live of 10 days (matching SparkPost's event retention).
-You can list these keys with
-```
-redis-cli keys msgID*
-```
-
 ## linktool
-
 Command-line tool to encode and decode link URLs, useful during testing.
 
 ```

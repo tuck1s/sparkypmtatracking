@@ -1,8 +1,4 @@
-type,orig,rcpt,header_x-sp-message-id,header_x-tracking-id
-d,test@pmta.signalsdemo.trymsys.net,test+00102830@not-orange.fr.bouncy-sink.trymsys.net,86021A1D1B5D89E8E004,a5a1050437e345389bc2c7d6d79743f5
-d,test@pmta.signalsdemo.trymsys.net,test+00113980@not-orange.fr.bouncy-sink.trymsys.net,92C11A1D1B5D1E33C289,604b72bf4caa46879e6802764b3f6779
-d,test@pmta.signalsdemo.trymsys.net,test+00151252@not-yahoo.com.bouncy-sink.trymsys.net,980E1A1D1B5DAD773C26,a7bd9de6f97949408acaef0f4d6439c1
-d,test@pmta.signalsdemo.trymsys.net,test+00166718@not-aol.com.bouncy-sink.trymsys.net,5A941A1D1B5DC04EC7BD,b2445fba81084b6db663353e19f8f01b
-d,test@pmta.signalsdemo.trymsys.net,test+00183623@not-orange.fr.bouncy-sink.trymsys.net,C5A31A1D1B5D399E0436,9d1f678d289b4ef7b69268b73351b6db
-d,test@pmta.signalsdemo.trymsys.net,test+00117791@not-gmail.com.bouncy-sink.trymsys.net,63A41A1D1B5DB880AAAA,5fdbc096810c49b489085cf7b17fab90
-d,test@pmta.signalsdemo.trymsys.net,test+00078123@not-mail.ru.bouncy-sink.trymsys.net,4E6A1A1D1B5D16BFFC45,8deec52a2dd6462f81305da0ec997dde
+type,rcpt,header_x-sp-message-id,header_x-sp-subaccount-id
+d,test+00102830@not-orange.fr.bouncy-sink.trymsys.net,0000123456789abcdef0,0
+d,test+00113980@not-orange.fr.bouncy-sink.trymsys.net,0000123456789abcdef1,1
+d,test+00183623@not-orange.fr.bouncy-sink.trymsys.net,0000123456789abcdef2,2

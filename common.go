@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-redis/redis"
 	"gopkg.in/natefinch/lumberjack.v2" // timed rotating log handler
@@ -90,8 +91,11 @@ const RedisQueue = "trk_queue"
 // RedisAcctHeaders holds the PowerMTA accounting file headers
 const RedisAcctHeaders = "acct_headers"
 
-// TrackingPrefix is the prefix for keys holding enrichment data
+// TrackingPrefix is the prefix for keys holding augmentation data
 const TrackingPrefix = "msgID_"
+
+// MsgIDTTL defines the time-to-live for augmentation data
+const MsgIDTTL = time.Duration(time.Hour * 24 * 10)
 
 // MyRedis returns a client handle for Redis, for server the standard port
 func MyRedis() (client *redis.Client) {

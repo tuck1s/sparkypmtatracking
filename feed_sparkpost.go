@@ -38,18 +38,18 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (SparkPostEvent, erro
 	eptr.UserAgent = tev.UserAgent
 	eptr.IPAddress = tev.IPAddress
 
-	// Enrich with PowerMTA accounting-pipe values, if we have these, from persistent storage
+	// Augment with PowerMTA accounting-pipe values, if we have these, from persistent storage
 	tKey := TrackingPrefix + tev.WD.MessageID
-	if enrichmentJSON, err := client.Get(tKey).Result(); err == redis.Nil {
+	if augmentJSON, err := client.Get(tKey).Result(); err == redis.Nil {
 		log.Println("Warning: redis key", tKey, "not found, url=", tev.WD.TargetLinkURL)
 	} else {
-		enrichment := make(map[string]string)
-		err = json.Unmarshal([]byte(enrichmentJSON), &enrichment)
+		augment := make(map[string]string)
+		err = json.Unmarshal([]byte(augmentJSON), &augment)
 		if err != nil {
 			return spEvent, err
 		}
-		eptr.RcptTo = enrichment["rcpt"]
-		eptr.SubaccountID = SafeStringToInt(enrichment["header_x-sp-subaccount-id"])
+		eptr.RcptTo = augment["rcpt"]
+		eptr.SubaccountID = SafeStringToInt(augment["header_x-sp-subaccount-id"])
 	}
 
 	// Fill in these fields with default / unique / derived values
@@ -60,7 +60,7 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (SparkPostEvent, erro
 	return spEvent, nil
 }
 
-// Enrich and format a SparkPost event into NDJSON
+// Augment and format a SparkPost event into NDJSON
 func sparkPostEventNDJSON(eStr string, client *redis.Client) ([]byte, error) {
 	e, err := makeSparkPostEvent(eStr, client)
 	if err != nil {

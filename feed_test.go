@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -49,7 +48,7 @@ func checkLog(t *testing.T, waitfor int, myLogp *bytes.Buffer, expected string, 
 		time.Sleep(1 * time.Second)
 		count++
 		if count > waitfor {
-			t.Error(fmt.Sprintf("Waited %v seconds and no response - exiting", waitfor))
+			t.Errorf("Waited %v seconds and no response - exiting", waitfor)
 			break
 		}
 		res = retrieveLog(myLogp)
@@ -66,12 +65,12 @@ func checkLog(t *testing.T, waitfor int, myLogp *bytes.Buffer, expected string, 
 func checkHeaders(h http.Header, chk map[string]string) error {
 	for k, v := range chk {
 		if len(h[k]) != 1 {
-			s := errors.New(fmt.Sprintf("Header %s has length %d", k, len(h[k])))
+			s := fmt.Errorf("Header %s has length %d", k, len(h[k]))
 			return s
 		}
 		// Case-insensitive comparison
 		if strings.ToLower(h[k][0]) != strings.ToLower(v) {
-			s := errors.New(fmt.Sprintf("Header %s has value %s, was expecting value %s", k, h[k][0], v))
+			s := fmt.Errorf("Header %s has value %s, was expecting value %s", k, h[k][0], v)
 			return s
 		}
 	}
@@ -81,10 +80,10 @@ func checkHeaders(h http.Header, chk map[string]string) error {
 // checkResponse compares the mock SparkPost request with what was expected
 func checkResponse(r *http.Request) error {
 	if r.Method != "POST" {
-		return errors.New(fmt.Sprintf("Unexpected Method found: %s", r.Method))
+		return fmt.Errorf("Unexpected Method found: %s", r.Method)
 	}
 	if r.RequestURI != "/api/v1/ingest/events" {
-		return errors.New(fmt.Sprintf("Unexpected RequestURI: %s", r.RequestURI))
+		return fmt.Errorf("Unexpected RequestURI: %s", r.RequestURI)
 	}
 	expectedHeaders := map[string]string{
 		"Authorization":    mockAPIKey,
@@ -112,16 +111,16 @@ func checkResponse(r *http.Request) error {
 		// Check contents
 		e := event.EventWrapper.EventGrouping
 		if e.Type != "click" || e.DelvMethod != "esmtp" || len(e.EventID) < 10 {
-			return errors.New(fmt.Sprintf("Event has a suspect value somewhere in a) %v %v %v", e.Type, e.DelvMethod, e.EventID))
+			return fmt.Errorf("Event has a suspect value somewhere in a) %v %v %v", e.Type, e.DelvMethod, e.EventID)
 		}
 		if e.IPAddress != testIPAddress || e.MessageID != testMessageID || e.RcptTo != testRecipient {
-			return errors.New(fmt.Sprintf("Event has a suspect value somewhere in b) %v %v %v", e.IPAddress, e.MessageID, e.RcptTo))
+			return fmt.Errorf("Event has a suspect value somewhere in b) %v %v %v", e.IPAddress, e.MessageID, e.RcptTo)
 		}
 		if len(e.TimeStamp) < 10 || e.TargetLinkURL != testURL || e.UserAgent != testUserAgent {
-			return errors.New(fmt.Sprintf("Event has a suspect value somewhere in c) %v %v %v", e.TimeStamp, e.TargetLinkURL, e.UserAgent))
+			return fmt.Errorf("Event has a suspect value somewhere in c) %v %v %v", e.TimeStamp, e.TargetLinkURL, e.UserAgent)
 		}
 		if e.SubaccountID != testSubaccountID {
-			return errors.New(fmt.Sprintf("Event has a suspect value somewhere in d) %v", e.SubaccountID))
+			return fmt.Errorf("Event has a suspect value somewhere in d) %v", e.SubaccountID)
 		}
 	}
 	return nil
@@ -193,7 +192,7 @@ func emptyRedisQueue(client *redis.Client) {
 	}
 }
 
-func mockEvents(t *testing.T, nEvents int, client *redis.Client, enrich bool) {
+func mockEvents(t *testing.T, nEvents int, client *redis.Client, augment bool) {
 	// Build a test event
 	msgID := testMessageID
 	var e spmta.TrackEvent
@@ -212,19 +211,19 @@ func mockEvents(t *testing.T, nEvents int, client *redis.Client, enrich bool) {
 		t.Errorf("Error %v", err)
 	}
 
-	if enrich {
-		// Create a fake acct_etl enrichment record in Redis
-		enrichment := map[string]string{
+	if augment {
+		// Create a fake acct_etl augmentation record in Redis
+		augmentData := map[string]string{
 			"header_x-sp-subaccount-id": strconv.Itoa(testSubaccountID),
 			"rcpt":                      testRecipient,
 		}
-		enrichmentJSON, err := json.Marshal(enrichment)
+		augmentJSON, err := json.Marshal(augmentData)
 		if err != nil {
 			t.Errorf("Error %v", err)
 		}
 		msgIDKey := spmta.TrackingPrefix + msgID
 		ttl := time.Duration(testTime * 20) // expires fairly quickly after test run
-		_, err = client.Set(msgIDKey, enrichmentJSON, ttl).Result()
+		_, err = client.Set(msgIDKey, augmentJSON, ttl).Result()
 		if err != nil {
 			t.Errorf("Error %v", err)
 		}
