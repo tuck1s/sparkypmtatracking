@@ -12,7 +12,7 @@ func main() {
 	logfile := flag.String("logfile", "", "File written with message logs")
 	infile := flag.String("infile", "", "Input file (omit to read from stdin)")
 	flag.Usage = func() {
-		const helpText = "Extracts, transforms and loads accounting data fed by PowerMTA pipe into Redis" +
+		const helpText = "Extracts, transforms and loads accounting data fed by PowerMTA pipe into Redis\n" +
 			"Usage of %s:\n"
 		fmt.Fprintf(flag.CommandLine.Output(), helpText, os.Args[0])
 		flag.PrintDefaults()

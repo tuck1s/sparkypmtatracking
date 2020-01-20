@@ -192,25 +192,16 @@ func emptyRedisQueue(client *redis.Client) {
 	}
 }
 
-func mockEvents(t *testing.T, nEvents int, client *redis.Client, augment bool) {
-	// Build a test event
-	msgID := testMessageID
-	var e spmta.TrackEvent
-	e.WD = spmta.WrapperData{
-		Action:        testAction,
-		TargetLinkURL: testURL,
-		MessageID:     msgID,
-	}
-	e.UserAgent = testUserAgent
-	e.IPAddress = testIPAddress
-	e.TimeStamp = strconv.FormatInt(time.Now().Unix(), 10)
+const ttl = time.Duration(testTime * 20) // expires fairly quickly after test run
 
+func mockEvents(t *testing.T, nEvents int, client *redis.Client, augment bool) {
+	msgID := testMessageID
+	e := testEvent(msgID)
 	// Build the composite info ready to push into the Redis queue
 	eBytes, err := json.Marshal(e)
 	if err != nil {
 		t.Errorf("Error %v", err)
 	}
-
 	if augment {
 		// Create a fake acct_etl augmentation record in Redis
 		augmentData := map[string]string{
@@ -222,7 +213,6 @@ func mockEvents(t *testing.T, nEvents int, client *redis.Client, augment bool) {
 			t.Errorf("Error %v", err)
 		}
 		msgIDKey := spmta.TrackingPrefix + msgID
-		ttl := time.Duration(testTime * 20) // expires fairly quickly after test run
 		_, err = client.Set(msgIDKey, augmentJSON, ttl).Result()
 		if err != nil {
 			t.Errorf("Error %v", err)
@@ -234,6 +224,20 @@ func mockEvents(t *testing.T, nEvents int, client *redis.Client, augment bool) {
 			t.Errorf("Error %v", err)
 		}
 	}
+}
+
+// Build a test event
+func testEvent(msgID string) spmta.TrackEvent {
+	var e spmta.TrackEvent
+	e.WD = spmta.WrapperData{
+		Action:        testAction,
+		TargetLinkURL: testURL,
+		MessageID:     msgID,
+	}
+	e.UserAgent = testUserAgent
+	e.IPAddress = testIPAddress
+	e.TimeStamp = strconv.FormatInt(time.Now().Unix(), 10)
+	return e
 }
 
 // Detailed unit tests
@@ -291,5 +295,79 @@ func TestAgedContent(t *testing.T) {
 	res = tBuf.AgedContent()
 	if !res {
 		t.Errorf("Unexpected value")
+	}
+}
+
+func TestSparkPostEventNDJSONFaultyInputs(t *testing.T) {
+	client := spmta.MyRedis()
+	// Invalid input string, i.e. not properly constructed JSON
+	const eStrFaulty = `{"WD":{"act":"c`
+	_, err := spmta.SparkPostEventNDJSON(eStrFaulty, client)
+	if err.Error() != "unexpected end of JSON input" {
+		t.Error(err)
+	}
+
+	// Message ID that can't be found, so event will succeed, not be augmented, and warning logged
+	const notFoundMsgID = "0000123456789abcdef1"
+	client.Del(notFoundMsgID)
+	myLogp := captureLog()
+	e := testEvent(notFoundMsgID)
+	eBytes, err := json.Marshal(e)
+	if err != nil {
+		t.Errorf("Error %v", err)
+	}
+	_, err = spmta.SparkPostEventNDJSON(string(eBytes), client)
+	if err != nil {
+		t.Error(err)
+	}
+	checkLog(t, 1, myLogp, "Warning: redis key msgID_"+notFoundMsgID+" not found", 1)
+
+	// MessageID Redis record corrupt
+	const augmentFaulty = `{"header_x-sp-subaccount-id"`
+	const augmentFaultyMsgID = "0000123456789abcdef2"
+	e = testEvent(augmentFaultyMsgID)
+	eBytes, err = json.Marshal(e)
+	if err != nil {
+		t.Errorf("Error %v", err)
+	}
+	client.Set("msgID_"+augmentFaultyMsgID, augmentFaulty, ttl)
+	_, err = spmta.SparkPostEventNDJSON(string(eBytes), client)
+	if err.Error() != "unexpected end of JSON input" {
+		t.Error(err)
+	}
+}
+
+func TestSparkPostIngestFaultyInputs(t *testing.T) {
+	client := spmta.MyRedis()
+	var ingestData []byte // empty
+
+	// provoke an error in the host address
+	host := "http://api.sparkpost.com/not_an_api"
+	apiKey := "junk"
+	err := spmta.SparkPostIngest(ingestData, client, host, apiKey)
+	if err.Error() != "Could not proceed using http! Only https is allowed to access the api." {
+		t.Error(err)
+	}
+
+	// provoke an error in JSON response
+	host = "https://example.com/"
+	err = spmta.SparkPostIngest(ingestData, client, host, apiKey)
+	if err.Error() != "invalid character '<' looking for beginning of value" {
+		t.Error(err)
+	}
+}
+
+func TestFeedEventsFaultyInputs(t *testing.T) {
+	client := spmta.MyRedis()
+	// Invalid input string, i.e. not properly constructed JSON, pushed into Redis queue
+	eBytesFaulty := []byte(`{"WD":{"act":"c`)
+	if _, err := client.RPush(spmta.RedisQueue, eBytesFaulty).Result(); err != nil {
+		t.Errorf("Error %v", err)
+	}
+	host := "http://api.sparkpost.com/not_an_api"
+	apiKey := "junk"
+	err := spmta.FeedEvents(client, host, apiKey, testTime)
+	if err.Error() != "unexpected end of JSON input" {
+		t.Error(err)
 	}
 }

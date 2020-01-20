@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -23,6 +24,7 @@ func uniqEventID() string {
 	return strconv.FormatUint(num, 10)
 }
 
+// makeSparkPostEvent takes a raw Redis queue entry and forms a SparkPostEvent structure
 func makeSparkPostEvent(eStr string, client *redis.Client) (SparkPostEvent, error) {
 	var tev TrackEvent
 	var spEvent SparkPostEvent
@@ -60,8 +62,8 @@ func makeSparkPostEvent(eStr string, client *redis.Client) (SparkPostEvent, erro
 	return spEvent, nil
 }
 
-// Augment and format a SparkPost event into NDJSON
-func sparkPostEventNDJSON(eStr string, client *redis.Client) ([]byte, error) {
+// SparkPostEventNDJSON formats a SparkPost event into NDJSON, augmenting with Redis data
+func SparkPostEventNDJSON(eStr string, client *redis.Client) ([]byte, error) {
 	e, err := makeSparkPostEvent(eStr, client)
 	if err != nil {
 		return nil, err
@@ -74,8 +76,8 @@ func sparkPostEventNDJSON(eStr string, client *redis.Client) ([]byte, error) {
 	return eJSON, nil
 }
 
-// Prepare a batch of TrackingEvents for ingest to SparkPost.
-func sparkPostIngest(ingestData []byte, client *redis.Client, host string, apiKey string) error {
+// SparkPostIngest POSTs a batch of ingestData to SparkPost Ingest API
+func SparkPostIngest(ingestData []byte, client *redis.Client, host string, apiKey string) error {
 	var zbuf bytes.Buffer
 	zw := gzip.NewWriter(&zbuf)
 	_, err := zw.Write(ingestData)
@@ -118,8 +120,10 @@ func sparkPostIngest(ingestData []byte, client *redis.Client, host string, apiKe
 		return err
 	}
 	if resObj.Errors != nil && len(resObj.Errors) > 0 {
+		errStr := resObj.Errors[0].Message
 		log.Printf("Uploaded %d bytes raw, %d bytes gzipped. SparkPost response: %s, errors[0]= %s\n",
-			len(ingestData), gzipSize, res.Status, resObj.Errors[0].Message)
+			len(ingestData), gzipSize, res.Status, errStr)
+		return errors.New(errStr)
 	}
 	if resObj.Results.ID != "" {
 		log.Printf("Uploaded %d bytes raw, %d bytes gzipped. SparkPost Ingest response: %s, results.id=%s\n",
@@ -153,7 +157,7 @@ func FeedEvents(client *redis.Client, host string, apiKey string, maxAge time.Du
 		if err == redis.Nil {
 			// Queue is now empty - send this batch if it's old enough, and return
 			if tBuf.AgedContent() {
-				return sparkPostIngest(tBuf.Content, client, host, apiKey)
+				return SparkPostIngest(tBuf.Content, client, host, apiKey)
 			}
 			time.Sleep(1 * time.Second) // polling wait time
 			continue
@@ -161,13 +165,13 @@ func FeedEvents(client *redis.Client, host string, apiKey string, maxAge time.Du
 		if err != nil {
 			return err
 		}
-		thisEvent, err := sparkPostEventNDJSON(d, client)
+		thisEvent, err := SparkPostEventNDJSON(d, client)
 		if err != nil {
 			return err
 		}
 		// If this event would make the content oversize, send what we already have
 		if len(tBuf.Content)+len(thisEvent) >= SparkPostIngestMaxPayload {
-			err = sparkPostIngest(tBuf.Content, client, host, apiKey)
+			err = SparkPostIngest(tBuf.Content, client, host, apiKey)
 			if err != nil {
 				return err
 			}
