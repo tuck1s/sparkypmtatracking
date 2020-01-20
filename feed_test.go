@@ -309,7 +309,8 @@ func TestSparkPostEventNDJSONFaultyInputs(t *testing.T) {
 
 	// Message ID that can't be found, so event will succeed, not be augmented, and warning logged
 	const notFoundMsgID = "0000123456789abcdef1"
-	client.Del(notFoundMsgID)
+	const redisKeyNotFoundMsgID = "msgID_" + notFoundMsgID
+	client.Del(redisKeyNotFoundMsgID)
 	myLogp := captureLog()
 	e := testEvent(notFoundMsgID)
 	eBytes, err := json.Marshal(e)
@@ -320,7 +321,7 @@ func TestSparkPostEventNDJSONFaultyInputs(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	checkLog(t, 1, myLogp, "Warning: redis key msgID_"+notFoundMsgID+" not found", 1)
+	checkLog(t, 1, myLogp, "Warning: redis key "+redisKeyNotFoundMsgID+" not found", 1)
 
 	// MessageID Redis record corrupt
 	const augmentFaulty = `{"header_x-sp-subaccount-id"`
