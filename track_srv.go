@@ -43,6 +43,8 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 	eBytes, err := DecodePath(s[1])
 	if err != nil {
 		log.Println(err)
+		w.WriteHeader(http.StatusBadRequest)
+		return
 	}
 	if err = json.Unmarshal(eBytes, &e.WD); err != nil {
 		log.Println(err)

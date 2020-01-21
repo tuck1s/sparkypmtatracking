@@ -50,7 +50,7 @@ func runHTTPTest(t *testing.T, method string, reqURL string, expectCode int, exp
 
 // Make pseudo http requests in, check Redis queue contents comes out
 func TestTrackingServer(t *testing.T) {
-	empty := []byte("")
+	var empty []byte
 	client := spmta.MyRedis()
 
 	// basic sniff test with a short path
@@ -86,4 +86,35 @@ func TestTrackingServer(t *testing.T) {
 	runHTTPTest(t, "OPTIONS", "/", http.StatusMethodNotAllowed, empty, client)
 	runHTTPTest(t, "TRACE", "/", http.StatusMethodNotAllowed, empty, client)
 	runHTTPTest(t, "PATCH", "/", http.StatusMethodNotAllowed, empty, client)
+}
+func TestTrackingServerFaultyInputs(t *testing.T) {
+	var empty []byte
+	client := spmta.MyRedis()
+	client.Del(spmta.RedisQueue)
+
+	// Invalid path (will fail base64 decoding)
+	runHTTPTest(t, "GET", "/~~~~~~", http.StatusBadRequest, empty, client)
+
+	// Invalid path (will fail zlib decoding)
+	runHTTPTest(t, "GET", "/not_a_valid_path", http.StatusBadRequest, empty, client)
+
+	// Invalid path (will fail JSON decoding)
+	truncPath := []byte(`{"act":"c","t_url":"xyzzy"`)
+	tpEnc, err := spmta.EncodePath(truncPath)
+	if err != nil {
+		t.Error(err)
+	}
+	runHTTPTest(t, "GET", "/"+tpEnc, http.StatusBadRequest, empty, client)
+
+	// force Redis RPush to fail
+	client.Del(spmta.RedisQueue)
+	client.Set(spmta.RedisQueue, "not a queue", 0)
+	// click
+	url, err := spmta.EncodeLink(testTrackingDomain, "click", testMessageID, testRecipient, testTargetURL)
+	if err != nil {
+		t.Error(err)
+	}
+	runHTTPTest(t, "GET", url, http.StatusInternalServerError, empty, client)
+	// clean up after
+	client.Del(spmta.RedisQueue)
 }

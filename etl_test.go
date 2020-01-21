@@ -1,21 +1,20 @@
 package sparkypmtatracking_test
 
 import (
-	"os"
 	"strings"
 	"testing"
 
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
-const exampleCSV = "example.csv"
+const exampleCSV = "type,rcpt,header_x-sp-message-id,header_x-sp-subaccount-id\n" +
+	"d,test+00102830@not-orange.fr.bouncy-sink.trymsys.net,0000123456789abcdef0,0\n" +
+	"d,test+00113980@not-orange.fr.bouncy-sink.trymsys.net,0000123456789abcdef1,1\n" +
+	"d,test+00183623@not-orange.fr.bouncy-sink.trymsys.net,0000123456789abcdef2,2\n"
 
 func TestAccountETL(t *testing.T) {
-	f, err := os.Open(exampleCSV)
-	if err != nil {
-		t.Errorf("Error %v", err)
-	}
-	err = spmta.AccountETL(f)
+	f := strings.NewReader(exampleCSV)
+	err := spmta.AccountETL(f)
 	if err != nil {
 		t.Errorf("Error %v", err)
 	}

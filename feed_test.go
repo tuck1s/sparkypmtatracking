@@ -182,11 +182,21 @@ func TestFeedForever(t *testing.T) {
 	checkLog(t, 20, myLogp, testMockBatchResponse, 1)
 }
 
+func wrongTypeErr(err error) bool {
+	s := err.Error()
+	return len(s) >= 9 && s[0:9] == "WRONGTYPE"
+}
+
 func emptyRedisQueue(client *redis.Client) {
 	// Make sure redis queue is empty
 	for {
-		_, err := client.LPop(spmta.RedisQueue).Result()
-		if err == redis.Nil {
+		v, err := client.LPop(spmta.RedisQueue).Result()
+		if err == nil {
+			fmt.Printf("Read value %v\n", v)
+			continue // actual value read .. keep going
+		}
+		// Check for empty, or queue error
+		if err == redis.Nil || wrongTypeErr(err) {
 			break
 		}
 	}
