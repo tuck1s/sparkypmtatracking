@@ -56,28 +56,27 @@ func TestTrackingServer(t *testing.T) {
 	// basic sniff test with a short path
 	runHTTPTest(t, "GET", "/", http.StatusBadRequest, empty, client)
 
-	trkDomain := RandomBaseURL()
-	// click
-	url, err := spmta.EncodeLink(trkDomain, "click", testMessageID, testRecipient, RandomURLWithPath())
-	if err != nil {
-		t.Error(err)
+	// Check responses
+	type actionExpectedResponse struct {
+		Act  string
+		resp int
+		body []byte
 	}
-	runHTTPTest(t, "GET", url, http.StatusFound, empty, client)
-
-	// open
-	url, err = spmta.EncodeLink(trkDomain, "open", testMessageID, testRecipient, RandomURLWithPath())
-	if err != nil {
-		t.Error(err)
+	arList := []actionExpectedResponse{
+		{"click", http.StatusFound, empty},
+		{"open", http.StatusOK, spmta.TransparentGif},
+		{"initial_open", http.StatusOK, spmta.TransparentGif},
 	}
-	runHTTPTest(t, "GET", url, http.StatusOK, spmta.TransparentGif, client)
-
-	// initial_open
-	url, err = spmta.EncodeLink(trkDomain, "initial_open", testMessageID, testRecipient, RandomURLWithPath())
-	if err != nil {
-		t.Error(err)
+	for _, ar := range arList {
+		trkDomain := RandomBaseURL()
+		msgID := spmta.UniqMessageID()
+		recip := RandomRecipient()
+		url, err := spmta.EncodeLink(trkDomain, ar.Act, msgID, recip, RandomURLWithPath())
+		if err != nil {
+			t.Error(err)
+		}
+		runHTTPTest(t, "GET", url, ar.resp, ar.body, client)
 	}
-	runHTTPTest(t, "GET", url, http.StatusOK, spmta.TransparentGif, client)
-
 	// Other (invalid) method verbs - see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
 	runHTTPTest(t, "HEAD", "/", http.StatusMethodNotAllowed, empty, client)
 	runHTTPTest(t, "POST", "/", http.StatusMethodNotAllowed, empty, client)
@@ -112,8 +111,9 @@ func TestTrackingServerFaultyInputs(t *testing.T) {
 	client.Set(spmta.RedisQueue, "not a queue", 0)
 
 	trkDomain := RandomBaseURL()
+	msgID := spmta.UniqMessageID()
 	// click
-	url, err := spmta.EncodeLink(trkDomain, "click", testMessageID, testRecipient, RandomURLWithPath())
+	url, err := spmta.EncodeLink(trkDomain, "click", msgID, testRecipient, RandomURLWithPath())
 	if err != nil {
 		t.Error(err)
 	}

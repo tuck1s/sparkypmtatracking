@@ -30,12 +30,10 @@ const testHTMLTemplate1 = `<!DOCTYPE html>
 </html>
 `
 
-const testMessageID = "0000123456789abcdef0"
-const testRecipient = "recipient@example.com"
+// Fixed values used in some tests
+//const testMessageID = "0000123456789abcdef0"
 
-//const testTrackingDomain = "http://tracking.example.com"
-//const testTrackingPath = "wibble/wobble"
-//const testTargetURL2 = "https://target.example.com/bobs/burgers"
+const testRecipient = "recipient@example.com"
 
 // ioHarness takes input as a string, expected output as a string,
 // calls the "io.Copy-like" function f (the function under test), and compares the returned output with expected
@@ -103,6 +101,10 @@ func RandomURLWithPath() string {
 	return RandomURL(rand.Intn(4))
 }
 
+func RandomRecipient() string {
+	return RandomWord() + "@" + RandomWord() + "." + RandomWord()
+}
+
 func TestTrackHTML(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())
 	// Run several times with randomised contents
@@ -111,7 +113,7 @@ func TestTrackHTML(t *testing.T) {
 		trkDomain := RandomBaseURL()
 		testTargetURL := RandomURLWithPath()
 		testTargetURL2 := RandomURLWithPath()
-		testTemplate(testHTMLTemplate1, trkDomain, testTargetURL, testTargetURL2, msgID, testRecipient, t)
+		testTemplate(testHTMLTemplate1, trkDomain, testTargetURL, testTargetURL2, msgID, RandomRecipient(), t)
 	}
 }
 
@@ -185,12 +187,13 @@ func TestActionToType(t *testing.T) {
 }
 
 func TestTrackHTMLFaultyInputs(t *testing.T) {
+	msgID := spmta.UniqMessageID()
 	trkDomain := RandomBaseURL()
 	myTracker, err := spmta.NewWrapper(trkDomain)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
-	myTracker.SetMessageInfo(testMessageID, testRecipient)
+	myTracker.SetMessageInfo(msgID, RandomRecipient())
 
 	// Make faulty HTML
 	faultyHTML := "<htm  thats all folks"
@@ -199,6 +202,7 @@ func TestTrackHTMLFaultyInputs(t *testing.T) {
 
 func TestEncodeDecodePath(t *testing.T) {
 	const MAX = 1000
+	rand.Seed(time.Now().UTC().UnixNano())
 	big := make([]byte, MAX)
 	for i := 0; i <= MAX; i++ {
 		expected := big[0:i]
@@ -224,7 +228,9 @@ func TestEncodeDecodePath(t *testing.T) {
 func TestEncodeDecodeLink(t *testing.T) {
 	link := RandomURLWithPath()
 	trkDomain := RandomBaseURL()
-	url, err := spmta.EncodeLink(trkDomain, "click", testMessageID, testRecipient, link)
+	msgID := spmta.UniqMessageID()
+	recip := RandomRecipient()
+	url, err := spmta.EncodeLink(trkDomain, "click", msgID, recip, link)
 	if err != nil {
 		t.Error(err)
 	}
@@ -236,13 +242,13 @@ func TestEncodeDecodeLink(t *testing.T) {
 	expected := fmt.Sprintf(`{"act":"%s","t_url":"%s","msg_id":"%s","rcpt":"%s"}`,
 		"c",
 		link,
-		testMessageID,
-		testRecipient)
-	if string(eBytes) != expected {
+		msgID,
+		recip)
+	if got != expected {
 		t.Errorf("EncodeLink/DecodeLink JSON Got and expected values differ:\n---Got\n%s\n\n---Expected\n%s\n", got, expected)
 	}
-	if wd.Action != "c" || wd.TargetLinkURL != link || wd.MessageID != testMessageID || wd.RcptTo != testRecipient {
-		t.Errorf("EncodeLink/DecodeLink WD Got and expected values differ:\n---Got\n%s\n", wd)
+	if wd.Action != "c" || wd.TargetLinkURL != link || wd.MessageID != msgID || wd.RcptTo != recip {
+		t.Errorf("EncodeLink/DecodeLink Decoded unexpected value:\n---Got\n%s\n", wd)
 	}
 	fmt.Println(string(eBytes), wd, decodeTrackingURL)
 }
