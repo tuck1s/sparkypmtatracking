@@ -2,71 +2,40 @@ package sparkypmtatracking_test
 
 import (
 	"bytes"
-	"crypto/rand"
 	"fmt"
 	"io"
+	"math/rand"
 	"strings"
 	"testing"
+	"time"
 
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
-const testHTML = `<!DOCTYPE html>
+// string params: initial_pixel, testTargetURL, end_pixel
+const testHTMLTemplate1 = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <title>test mail</title>
 </head>
-<body>
-  Click <a href="https://sparkpost.com/">SparkPost </a>
-  <p>This is a very long line of text indeed containing !"#$%&'()*+,-./0123456789:; escaped
+<body>%s
+  Click <a href="%s">SparkPost</a>
+  <p>This is a very long line of text indeed containing !"#$%%&'()*+,-./0123456789:; escaped
     ?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\[ ]^_abcdefghijklmnopqrstuvwxyz ~</p>
   <p>Here's some exotic characters to work the quoted-printable stuff ¡¢£¤¥¦§¨©ª« ¡¢£¤¥¦§¨©ª«
   </p>
-</body>
+  Click <a href="%s">Another tracked link</a>
+%s</body>
 </html>
 `
+
 const testMessageID = "0000123456789abcdef0"
 const testRecipient = "recipient@example.com"
-const testTrackingDomain = "http://tracking.example.com"
-const testTrackingPath = "wibble/wobble"
-const testTargetURL = "https://sparkpost.com/"
 
-const expectedHTMLoutput = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>test mail</title>
-</head>
-<body><div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="http://tracking.example.com/eJwUy1sKhSAQBuC9_M9ymHPr4lM7ERunGNASMwiivUcL-E54rrBQGFS3lwgLGKRtdhpgQUT0_nx__6btej9ykIlgUDg_qghrVlnqIIdPOcqL14TrDgAA__8UYRn2"/></div>
-
-  Click <a href="http://tracking.example.com/eJwUzE0KAjEMBtC7fOti47925U2GmolanDohiSCId5c5wHtfVA4UMBJieNuEgkeEesnZtdpTZ48Vzz0joft9aCMKiIjWm-1ufziezvXKo9wICca6XCbctMkrLvKpXSdZPH7_AAAA__8PHCI-">SparkPost </a>
-  <p>This is a very long line of text indeed containing !"#$%&'()*+,-./0123456789:; escaped
-    ?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\[ ]^_abcdefghijklmnopqrstuvwxyz ~</p>
-  <p>Here's some exotic characters to work the quoted-printable stuff ¡¢£¤¥¦§¨©ª« ¡¢£¤¥¦§¨©ª«
-  </p>
-<img border="0" width="1" height="1" alt="" src="http://tracking.example.com/eJwUy10KhCAQB_C7_J9lmd3t06duIjZOIWiKGQTR3aMD_C5YrtBIUKjmKAEaUIj7aryDBhHR9_dv2q4fRjuzk4WgUDi_qgj77GWrk5w25iAfThH3EwAA__8WLxn8">
-</body>
-</html>
-`
-
-const expectedHTMLoutputLongPath = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>test mail</title>
-</head>
-<body><div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="http://tracking.example.com/wibble/wobble/eJwUy1sKhSAQBuC9_M9ymHPr4lM7ERunGNASMwiivUcL-E54rrBQGFS3lwgLGKRtdhpgQUT0_nx__6btej9ykIlgUDg_qghrVlnqIIdPOcqL14TrDgAA__8UYRn2"/></div>
-
-  Click <a href="http://tracking.example.com/wibble/wobble/eJwUzE0KAjEMBtC7fOti47925U2GmolanDohiSCId5c5wHtfVA4UMBJieNuEgkeEesnZtdpTZ48Vzz0joft9aCMKiIjWm-1ufziezvXKo9wICca6XCbctMkrLvKpXSdZPH7_AAAA__8PHCI-">SparkPost </a>
-  <p>This is a very long line of text indeed containing !"#$%&'()*+,-./0123456789:; escaped
-    ?@ABCDEFGHIJKLMNOPQRSTUVWXYZ\[ ]^_abcdefghijklmnopqrstuvwxyz ~</p>
-  <p>Here's some exotic characters to work the quoted-printable stuff ¡¢£¤¥¦§¨©ª« ¡¢£¤¥¦§¨©ª«
-  </p>
-<img border="0" width="1" height="1" alt="" src="http://tracking.example.com/wibble/wobble/eJwUy10KhCAQB_C7_J9lmd3t06duIjZOIWiKGQTR3aMD_C5YrtBIUKjmKAEaUIj7aryDBhHR9_dv2q4fRjuzk4WgUDi_qgj77GWrk5w25iAfThH3EwAA__8WLxn8">
-</body>
-</html>
-`
+//const testTrackingDomain = "http://tracking.example.com"
+//const testTrackingPath = "wibble/wobble"
+//const testTargetURL2 = "https://target.example.com/bobs/burgers"
 
 // ioHarness takes input as a string, expected output as a string,
 // calls the "io.Copy-like" function f (the function under test), and compares the returned output with expected
@@ -86,40 +55,64 @@ func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error
 	}
 }
 
-func TestTrackHTML(t *testing.T) {
-	myWrapper, err := spmta.NewWrapper(testTrackingDomain)
+func testTemplate(htmlTemplate string, trkDomain string, URL1 string, URL2 string, msgID string, recip string, t *testing.T) {
+	myWrapper, err := spmta.NewWrapper(trkDomain)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
-	if myWrapper.URL.String() != testTrackingDomain {
+	if myWrapper.URL.String() != trkDomain {
 		t.Errorf("Tracking domain set wrongly to %s", myWrapper.URL.String())
 	}
-	myWrapper.SetMessageInfo(testMessageID, testRecipient)
+	myWrapper.SetMessageInfo(msgID, recip)
+	testHTML := fmt.Sprintf(htmlTemplate, "", URL1, URL2, "")
+	expectedHTMLoutput := fmt.Sprintf(htmlTemplate, myWrapper.InitialOpenPixel(), myWrapper.WrapURL(URL1), myWrapper.WrapURL(URL2), myWrapper.OpenPixel())
 	ioHarness(testHTML, expectedHTMLoutput, myWrapper.TrackHTML, t)
+}
 
-	// with a trailing "/"
-	expectedURL := testTrackingDomain + "/"
-	myWrapper, err = spmta.NewWrapper(expectedURL)
-	if err != nil {
-		t.Errorf("Error returned from NewWrapper: %v", err)
+func RandomWord() string {
+	const dict = "abcdefghijklmnopqrstuvwxyz"
+	l := rand.Intn(20)
+	s := ""
+	for ; l > 0; l-- {
+		p := rand.Intn(len(dict))
+		s = s + string(dict[p])
 	}
-	if myWrapper.URL.String() != expectedURL {
-		t.Errorf("Tracking domain set to %s", myWrapper.URL.String())
-	}
-	myWrapper.SetMessageInfo(testMessageID, testRecipient)
-	ioHarness(testHTML, expectedHTMLoutput, myWrapper.TrackHTML, t)
+	return s
+}
 
-	// with a longer path
-	expectedURL = testTrackingDomain + "/" + testTrackingPath
-	myWrapper, err = spmta.NewWrapper(expectedURL)
-	if err != nil {
-		t.Errorf("Error returned from NewWrapper: %v", err)
+// A completely random URL (not belonging to any actual TLD), pathlen should be >= 0
+func RandomURL(pathlen int) string {
+	var method string
+	if rand.Intn(2) > 0 {
+		method = "https"
+	} else {
+		method = "http"
 	}
-	if myWrapper.URL.String() != expectedURL {
-		t.Errorf("Tracking domain set to %s", myWrapper.URL.String())
+	path := ""
+	for ; pathlen > 0; pathlen-- {
+		path = path + "/" + RandomWord()
 	}
-	myWrapper.SetMessageInfo(testMessageID, testRecipient)
-	ioHarness(testHTML, expectedHTMLoutputLongPath, myWrapper.TrackHTML, t)
+	return method + "://" + RandomWord() + "." + RandomWord() + path
+}
+
+func RandomBaseURL() string {
+	return RandomURL(0)
+}
+
+func RandomURLWithPath() string {
+	return RandomURL(rand.Intn(4))
+}
+
+func TestTrackHTML(t *testing.T) {
+	rand.Seed(time.Now().UTC().UnixNano())
+	// Run several times with randomised contents
+	for i := 0; i <= 100; i++ {
+		msgID := spmta.UniqMessageID()
+		trkDomain := RandomBaseURL()
+		testTargetURL := RandomURLWithPath()
+		testTargetURL2 := RandomURLWithPath()
+		testTemplate(testHTMLTemplate1, trkDomain, testTargetURL, testTargetURL2, msgID, testRecipient, t)
+	}
 }
 
 func TestTrackHTMLfaultyInputs(t *testing.T) {
@@ -192,7 +185,8 @@ func TestActionToType(t *testing.T) {
 }
 
 func TestTrackHTMLFaultyInputs(t *testing.T) {
-	myTracker, err := spmta.NewWrapper(testTrackingDomain)
+	trkDomain := RandomBaseURL()
+	myTracker, err := spmta.NewWrapper(trkDomain)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
@@ -228,7 +222,9 @@ func TestEncodeDecodePath(t *testing.T) {
 }
 
 func TestEncodeDecodeLink(t *testing.T) {
-	url, err := spmta.EncodeLink(testTrackingDomain, "click", testMessageID, testRecipient, testTargetURL)
+	link := RandomURLWithPath()
+	trkDomain := RandomBaseURL()
+	url, err := spmta.EncodeLink(trkDomain, "click", testMessageID, testRecipient, link)
 	if err != nil {
 		t.Error(err)
 	}
@@ -239,13 +235,13 @@ func TestEncodeDecodeLink(t *testing.T) {
 	got := string(eBytes)
 	expected := fmt.Sprintf(`{"act":"%s","t_url":"%s","msg_id":"%s","rcpt":"%s"}`,
 		"c",
-		testTargetURL,
+		link,
 		testMessageID,
 		testRecipient)
 	if string(eBytes) != expected {
 		t.Errorf("EncodeLink/DecodeLink JSON Got and expected values differ:\n---Got\n%s\n\n---Expected\n%s\n", got, expected)
 	}
-	if wd.Action != "c" || wd.TargetLinkURL != testTargetURL || wd.MessageID != testMessageID || wd.RcptTo != testRecipient {
+	if wd.Action != "c" || wd.TargetLinkURL != link || wd.MessageID != testMessageID || wd.RcptTo != testRecipient {
 		t.Errorf("EncodeLink/DecodeLink WD Got and expected values differ:\n---Got\n%s\n", wd)
 	}
 	fmt.Println(string(eBytes), wd, decodeTrackingURL)

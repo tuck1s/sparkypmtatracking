@@ -190,9 +190,8 @@ func wrongTypeErr(err error) bool {
 func emptyRedisQueue(client *redis.Client) {
 	// Make sure redis queue is empty
 	for {
-		v, err := client.LPop(spmta.RedisQueue).Result()
+		_, err := client.LPop(spmta.RedisQueue).Result()
 		if err == nil {
-			fmt.Printf("Read value %v\n", v)
 			continue // actual value read .. keep going
 		}
 		// Check for empty, or queue error

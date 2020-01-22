@@ -56,22 +56,23 @@ func TestTrackingServer(t *testing.T) {
 	// basic sniff test with a short path
 	runHTTPTest(t, "GET", "/", http.StatusBadRequest, empty, client)
 
+	trkDomain := RandomBaseURL()
 	// click
-	url, err := spmta.EncodeLink(testTrackingDomain, "click", testMessageID, testRecipient, testTargetURL)
+	url, err := spmta.EncodeLink(trkDomain, "click", testMessageID, testRecipient, RandomURLWithPath())
 	if err != nil {
 		t.Error(err)
 	}
 	runHTTPTest(t, "GET", url, http.StatusFound, empty, client)
 
 	// open
-	url, err = spmta.EncodeLink(testTrackingDomain, "open", testMessageID, testRecipient, testTargetURL)
+	url, err = spmta.EncodeLink(trkDomain, "open", testMessageID, testRecipient, RandomURLWithPath())
 	if err != nil {
 		t.Error(err)
 	}
 	runHTTPTest(t, "GET", url, http.StatusOK, spmta.TransparentGif, client)
 
 	// initial_open
-	url, err = spmta.EncodeLink(testTrackingDomain, "initial_open", testMessageID, testRecipient, testTargetURL)
+	url, err = spmta.EncodeLink(trkDomain, "initial_open", testMessageID, testRecipient, RandomURLWithPath())
 	if err != nil {
 		t.Error(err)
 	}
@@ -109,8 +110,10 @@ func TestTrackingServerFaultyInputs(t *testing.T) {
 	// force Redis RPush to fail
 	client.Del(spmta.RedisQueue)
 	client.Set(spmta.RedisQueue, "not a queue", 0)
+
+	trkDomain := RandomBaseURL()
 	// click
-	url, err := spmta.EncodeLink(testTrackingDomain, "click", testMessageID, testRecipient, testTargetURL)
+	url, err := spmta.EncodeLink(trkDomain, "click", testMessageID, testRecipient, RandomURLWithPath())
 	if err != nil {
 		t.Error(err)
 	}
