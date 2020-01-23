@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
+	"net/mail"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/tuck1s/go-smtpproxy"
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
@@ -30,11 +32,6 @@ const testHTMLTemplate1 = `<!DOCTYPE html>
 </html>
 `
 
-// Fixed values used in some tests
-//const testMessageID = "0000123456789abcdef0"
-
-const testRecipient = "recipient@example.com"
-
 // ioHarness takes input as a string, expected output as a string,
 // calls the "io.Copy-like" function f (the function under test), and compares the returned output with expected
 func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error), t *testing.T) {
@@ -53,23 +50,31 @@ func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error
 	}
 }
 
-func testTemplate(htmlTemplate string, trkDomain string, URL1 string, URL2 string, msgID string, recip string, t *testing.T) {
-	myWrapper, err := spmta.NewWrapper(trkDomain)
+func testHTML(htmlTemplate, URL1, URL2 string) string {
+	return fmt.Sprintf(htmlTemplate, "", URL1, URL2, "")
+}
+
+func expectedHTMLoutput(htmlTemplate, URL1, URL2 string, w *spmta.Wrapper) string {
+	return fmt.Sprintf(htmlTemplate, w.InitialOpenPixel(), w.WrapURL(URL1), w.WrapURL(URL2), w.OpenPixel())
+}
+
+func testHTMLWrapping(htmlTemplate string, trkDomain string, URL1 string, URL2 string, msgID string, recip string, t *testing.T) {
+	w, err := spmta.NewWrapper(trkDomain)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
-	if myWrapper.URL.String() != trkDomain {
-		t.Errorf("Tracking domain set wrongly to %s", myWrapper.URL.String())
+	if w.URL.String() != trkDomain {
+		t.Errorf("Tracking domain set wrongly to %s", w.URL.String())
 	}
-	myWrapper.SetMessageInfo(msgID, recip)
-	testHTML := fmt.Sprintf(htmlTemplate, "", URL1, URL2, "")
-	expectedHTMLoutput := fmt.Sprintf(htmlTemplate, myWrapper.InitialOpenPixel(), myWrapper.WrapURL(URL1), myWrapper.WrapURL(URL2), myWrapper.OpenPixel())
-	ioHarness(testHTML, expectedHTMLoutput, myWrapper.TrackHTML, t)
+	w.SetMessageInfo(msgID, recip)
+	testHTML := testHTML(htmlTemplate, URL1, URL2)
+	expectedHTMLoutput := expectedHTMLoutput(htmlTemplate, URL1, URL2, w)
+	ioHarness(testHTML, expectedHTMLoutput, w.TrackHTML, t) // run the test
 }
 
 func RandomWord() string {
 	const dict = "abcdefghijklmnopqrstuvwxyz"
-	l := rand.Intn(20)
+	l := rand.Intn(20) + 1
 	s := ""
 	for ; l > 0; l-- {
 		p := rand.Intn(len(dict))
@@ -113,7 +118,7 @@ func TestTrackHTML(t *testing.T) {
 		trkDomain := RandomBaseURL()
 		testTargetURL := RandomURLWithPath()
 		testTargetURL2 := RandomURLWithPath()
-		testTemplate(testHTMLTemplate1, trkDomain, testTargetURL, testTargetURL2, msgID, RandomRecipient(), t)
+		testHTMLWrapping(testHTMLTemplate1, trkDomain, testTargetURL, testTargetURL2, msgID, RandomRecipient(), t)
 	}
 }
 
@@ -251,4 +256,80 @@ func TestEncodeDecodeLink(t *testing.T) {
 		t.Errorf("EncodeLink/DecodeLink Decoded unexpected value:\n---Got\n%s\n", wd)
 	}
 	fmt.Println(string(eBytes), wd, decodeTrackingURL)
+}
+
+// Test functions that are usually called back by the smtpproxy
+func TestWrapperActive(t *testing.T) {
+	// start with nil value, should return false
+	var w *spmta.Wrapper
+	a := w.Active()
+	if a {
+		t.Errorf("Active() return value %v, expected false", a)
+	}
+
+	trkDomain := RandomBaseURL()
+	w, err := spmta.NewWrapper(trkDomain)
+	if err != nil {
+		t.Errorf("Error returned from NewWrapper: %v", err)
+	}
+	a = w.Active()
+	if !a {
+		t.Errorf("Active() return value %v, expected true", a)
+	}
+}
+
+const testEmailTemplate = `To: Bob <bob.lumreeker@gmail.com>
+Content-Type: multipart/alternative; boundary="D7F------------D7FD5A0B8AB9C65CCDBFA872"
+MIME-Version: 1.0
+Subject: Fresh, tasty Avocados delivered straight to your door!
+From: "Steve At SparkPost" <steve@example.com>
+
+--D7F------------D7FD5A0B8AB9C65CCDBFA872
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="UTF-8"
+
+Spicy jalapeno bacon ipsum dolor amet pariatur mollit fatback venison, cillum occaecat quis ut labore pork belly culpa ea bacon in spare ribs.
+
+--D7F------------D7FD5A0B8AB9C65CCDBFA872
+Content-Transfer-Encoding: 8bit
+Content-Type: text/html; charset="UTF-8"
+
+%s
+--D7F------------D7FD5A0B8AB9C65CCDBFA872`
+
+func TestProcessMessageHeadersAndBody(t *testing.T) {
+	// create HTML body contents, then place that inside an email
+	URL1 := RandomURLWithPath()
+	URL2 := RandomURLWithPath()
+	testHTML := testHTML(testHTMLTemplate1, URL1, URL2)
+	testEmail := fmt.Sprintf(testEmailTemplate, testHTML)
+	message, err := mail.ReadMessage(strings.NewReader(testEmail))
+	if err != nil {
+		t.Error(err)
+	}
+	// Prepare to wrap
+	trkDomain := RandomBaseURL()
+	w, err := spmta.NewWrapper(trkDomain)
+	if err != nil {
+		t.Error(err)
+	}
+	err = w.ProcessMessageHeaders(message.Header)
+	if err != nil {
+		t.Error(err)
+	}
+	// Check that the message ID header was added
+	msgID := message.Header.Get(spmta.SparkPostMessageIDHeader)
+	if len(msgID) != 20 {
+		t.Errorf("message ID header %s should be 20 chars long", spmta.SparkPostMessageIDHeader)
+	}
+	// Handle the message body, via the external smtpproxy lib, grabbing the output into a buffer
+	var outbuf bytes.Buffer
+	bw, err := smtpproxy.HandleMessageBody(&outbuf, message.Header, message.Body, w)
+	if bw < len(testEmail) {
+		t.Errorf("A surprisingly small email, bw=%d", bw)
+	}
+	s := outbuf.String()
+	if len(s) < len(testEmail) {
+		t.Errorf("A surprisingly small email, len=%d", len(s))
+	}
 }

@@ -77,9 +77,11 @@ func (wrap *Wrapper) SetMessageInfo(msgID string, rcpt string) {
 	}
 }
 
+// SparkPostMessageIDHeader is the email header name that carries the unique message ID
+const SparkPostMessageIDHeader = "X-Sp-Message-Id"
+
 // ProcessMessageHeaders reads the message's current headers and updates/inserts any new ones required
 func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
-	const sparkPostMessageIDHeader = "X-Sp-Message-Id"
 	rcpts, err := h.AddressList("to")
 	if err != nil {
 		return err
@@ -92,10 +94,10 @@ func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
 		return errors.New("This tracking implementation is designed for simple single-recipient messages only, sorry")
 	}
 	// See if we already have a message ID header; otherwise generate and add it
-	uniq := h.Get(sparkPostMessageIDHeader)
+	uniq := h.Get(SparkPostMessageIDHeader)
 	if uniq == "" {
 		uniq = UniqMessageID()
-		h[sparkPostMessageIDHeader] = []string{uniq} // Add unique value into the message headers for PowerMTA / Signals to process
+		h[SparkPostMessageIDHeader] = []string{uniq} // Add unique value into the message headers for PowerMTA / Signals to process
 	}
 	wrap.SetMessageInfo(uniq, rcpts[0].Address)
 	return nil

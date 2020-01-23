@@ -2,7 +2,6 @@ package sparkypmtatracking_test
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
@@ -40,11 +39,10 @@ func runHTTPTest(t *testing.T, method string, reqURL string, expectCode int, exp
 
 	if len(expectBody) > 0 {
 		// Check the Redis queue entry is what we expect.
-		d, err := client.LPop(spmta.RedisQueue).Result()
+		_, err := client.LPop(spmta.RedisQueue).Result()
 		if err != nil {
 			t.Error(err)
 		}
-		fmt.Println(d)
 	}
 }
 
@@ -78,15 +76,11 @@ func TestTrackingServer(t *testing.T) {
 		runHTTPTest(t, "GET", url, ar.resp, ar.body, client)
 	}
 	// Other (invalid) method verbs - see https://developer.mozilla.org/en-US/docs/Web/HTTP/Methods
-	runHTTPTest(t, "HEAD", "/", http.StatusMethodNotAllowed, empty, client)
-	runHTTPTest(t, "POST", "/", http.StatusMethodNotAllowed, empty, client)
-	runHTTPTest(t, "PUT", "/", http.StatusMethodNotAllowed, empty, client)
-	runHTTPTest(t, "DELETE", "/", http.StatusMethodNotAllowed, empty, client)
-	runHTTPTest(t, "CONNECT", "/", http.StatusMethodNotAllowed, empty, client)
-	runHTTPTest(t, "OPTIONS", "/", http.StatusMethodNotAllowed, empty, client)
-	runHTTPTest(t, "TRACE", "/", http.StatusMethodNotAllowed, empty, client)
-	runHTTPTest(t, "PATCH", "/", http.StatusMethodNotAllowed, empty, client)
+	for _, verb := range []string{"HEAD", "POST", "PUT", "DELETE", "CONNECT", "OPTIONS", "TRACE", "PATCH"} {
+		runHTTPTest(t, verb, "/", http.StatusMethodNotAllowed, empty, client)
+	}
 }
+
 func TestTrackingServerFaultyInputs(t *testing.T) {
 	var empty []byte
 	client := spmta.MyRedis()
@@ -112,8 +106,10 @@ func TestTrackingServerFaultyInputs(t *testing.T) {
 
 	trkDomain := RandomBaseURL()
 	msgID := spmta.UniqMessageID()
+	recip := RandomRecipient()
+
 	// click
-	url, err := spmta.EncodeLink(trkDomain, "click", msgID, testRecipient, RandomURLWithPath())
+	url, err := spmta.EncodeLink(trkDomain, "click", msgID, recip, RandomURLWithPath())
 	if err != nil {
 		t.Error(err)
 	}

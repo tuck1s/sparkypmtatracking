@@ -22,3 +22,4 @@ linktool
 setenvs.sh
 trk_queue.sh
 example*.eml
+smt.code-workspace
