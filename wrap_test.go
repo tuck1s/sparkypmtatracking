@@ -269,7 +269,7 @@ func TestEncodeDecodeLinkFaultyInputs(t *testing.T) {
 
 	// Faulty inputs - blank tracking domain
 	url, err = spmta.EncodeLink("", "click", msgID, recip, link)
-	if err.Error() != "parse : empty url" {
+	if !strings.Contains(err.Error(), "empty url") {
 		t.Error(err)
 	}
 	// invalid tracking domain
