@@ -169,25 +169,19 @@ func TestUniqMessageID(t *testing.T) {
 }
 
 func TestActionToType(t *testing.T) {
-	if spmta.ActionToType("i") != "initial_open" {
-		t.Errorf("Unexpected value returned from ActionToType")
+	aList := [][]string{
+		{"c", "click"},
+		{"o", "open"},
+		{"i", "initial_open"},
+		{"", ""},
+		{" ", ""},
+		{"cats_dogs", ""},
 	}
-
-	if spmta.ActionToType("o") != "open" {
-		t.Errorf("Unexpected value returned from ActionToType")
-	}
-
-	if spmta.ActionToType("c") != "click" {
-		t.Errorf("Unexpected value returned from ActionToType")
-	}
-
-	// faulty inputs
-	if spmta.ActionToType("") != "" {
-		t.Errorf("Unexpected value returned from ActionToType")
-	}
-
-	if spmta.ActionToType(" ") != "" {
-		t.Errorf("Unexpected value returned from ActionToType")
+	// Check responses
+	for _, a := range aList {
+		if spmta.ActionToType(a[0]) != a[1] {
+			t.Errorf("Unexpected value returned from ActionToType")
+		}
 	}
 }
 
@@ -230,32 +224,67 @@ func TestEncodeDecodePath(t *testing.T) {
 	}
 }
 
-func TestEncodeDecodeLink(t *testing.T) {
-	link := RandomURLWithPath()
+func testED(eType, action, link string, t *testing.T) {
 	trkDomain := RandomBaseURL()
 	msgID := spmta.UniqMessageID()
 	recip := RandomRecipient()
-	url, err := spmta.EncodeLink(trkDomain, "click", msgID, recip, link)
+	url, err := spmta.EncodeLink(trkDomain, eType, msgID, recip, link)
 	if err != nil {
 		t.Error(err)
 	}
-	eBytes, wd, decodeTrackingURL, err := spmta.DecodeLink(url)
+	eBytes, wd, _, err := spmta.DecodeLink(url)
 	if err != nil {
 		t.Error(err)
 	}
 	got := string(eBytes)
 	expected := fmt.Sprintf(`{"act":"%s","t_url":"%s","msg_id":"%s","rcpt":"%s"}`,
-		"c",
+		action,
 		link,
 		msgID,
 		recip)
 	if got != expected {
 		t.Errorf("EncodeLink/DecodeLink JSON Got and expected values differ:\n---Got\n%s\n\n---Expected\n%s\n", got, expected)
 	}
-	if wd.Action != "c" || wd.TargetLinkURL != link || wd.MessageID != msgID || wd.RcptTo != recip {
+	if wd.Action != action || wd.TargetLinkURL != link || wd.MessageID != msgID || wd.RcptTo != recip {
 		t.Errorf("EncodeLink/DecodeLink Decoded unexpected value:\n---Got\n%s\n", wd)
 	}
-	fmt.Println(string(eBytes), wd, decodeTrackingURL)
+}
+
+func TestEncodeDecodeLink(t *testing.T) {
+	testED("click", "c", RandomURLWithPath(), t)
+	testED("open", "o", "", t)
+	testED("initial_open", "i", "", t)
+}
+
+func TestEncodeDecodeLinkFaultyInputs(t *testing.T) {
+	msgID := spmta.UniqMessageID()
+	recip := RandomRecipient()
+	link := RandomURLWithPath()
+	trkDomain := RandomBaseURL()
+
+	// Faulty inputs - invalid action
+	url, err := spmta.EncodeLink(trkDomain, "pigs", msgID, recip, link)
+	if err.Error() != "Invalid encodeAction" {
+		t.Error(err)
+	}
+
+	// Faulty inputs - blank tracking domain
+	url, err = spmta.EncodeLink("", "click", msgID, recip, link)
+	if err.Error() != "parse : empty url" {
+		t.Error(err)
+	}
+	// invalid tracking domain
+	url, err = spmta.EncodeLink("notaurl", "click", msgID, recip, link)
+	if err.Error() != "parse notaurl: invalid URI for request" {
+		t.Error(err)
+	}
+	fmt.Println(url, err)
+	// got query parameter
+	url, err = spmta.EncodeLink("https://example.com?pets=dog", "click", msgID, recip, link)
+	if err.Error() != "Can't have query parameters in the tracking URL" {
+		t.Error(err)
+	}
+	fmt.Println(url, err)
 }
 
 // Test functions that are usually called back by the smtpproxy
@@ -332,4 +361,37 @@ func TestProcessMessageHeadersAndBody(t *testing.T) {
 	if len(s) < len(testEmail) {
 		t.Errorf("A surprisingly small email, len=%d", len(s))
 	}
+}
+
+func TestProcessMessageHeadersFaultyInputs(t *testing.T) {
+	var message mail.Message
+	trkDomain := RandomBaseURL()
+	w, err := spmta.NewWrapper(trkDomain)
+	if err != nil {
+		t.Error(err)
+	}
+	// empty message - missing TO address
+	err = w.ProcessMessageHeaders(message.Header)
+	if err.Error() != "mail: header not in message" {
+		t.Error(err)
+	}
+
+	// Correct number of TO addresses
+	message.Header = mail.Header{
+		"From":    []string{"John Doe <jdoe@machine.example>"},
+		"To":      []string{"Mary Smith <mary@example.net>"},
+		"Subject": []string{"Saying Hello"},
+	}
+	err = w.ProcessMessageHeaders(message.Header)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Too many recipient addresses
+	message.Header["Cc"] = []string{"Mary Smith 2<mary2@example.net>"}
+	err = w.ProcessMessageHeaders(message.Header)
+	if err == nil {
+		t.Error(err)
+	}
+
 }

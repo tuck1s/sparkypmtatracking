@@ -123,7 +123,7 @@ func EncodeLink(encodeTrackingURL, encodeAction, encodeMessageID, encodeRcptTo, 
 	case "click":
 		return w.WrapURL(encodeTargetLinkURL), nil
 	}
-	return "", nil
+	return "", errors.New("Invalid encodeAction")
 }
 
 // InitialOpenPixel returns an html fragment with pixel for initial open tracking.
