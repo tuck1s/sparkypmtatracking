@@ -206,11 +206,11 @@ func DecodeLink(urlStr string) ([]byte, WrapperData, string, error) {
 	}
 	decodeTrackingDomain := url.Scheme + "://" + url.Host
 
-	pathBytes := strings.Split(url.Path, "/") // should be only one / separator
-	if len(pathBytes) != 2 || pathBytes[0] != "" {
-		return nil, wd, decodeTrackingDomain, errors.New("Unexpected URL path with more than one /")
+	path := strings.Split(url.Path, "/") // should be only one / separator
+	if len(path) != 2 || path[0] != "" {
+		return nil, wd, decodeTrackingDomain, errors.New("Invalid link path")
 	}
-	eBytes, err := DecodePath(pathBytes[1])
+	eBytes, err := DecodePath(path[1])
 	if err != nil {
 		return eBytes, wd, decodeTrackingDomain, err
 	}

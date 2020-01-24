@@ -122,22 +122,22 @@ func TestTrackHTML(t *testing.T) {
 	}
 }
 
-func TestTrackHTMLfaultyInputs(t *testing.T) {
+func TestWrapperMethodsfaultyInputs(t *testing.T) {
 	// With uninitialised tracker, pixels should return empty string
-	myTracker := spmta.Wrapper{}
-	s := myTracker.InitialOpenPixel()
+	w := spmta.Wrapper{}
+	s := w.InitialOpenPixel()
 	if s != "" {
 		t.Errorf("Expecting empty result from InitialOpenPixel, got %s", s)
 	}
 
-	s = myTracker.OpenPixel()
+	s = w.OpenPixel()
 	if s != "" {
 		t.Errorf("Expecting empty result from InitialOpenPixel, got %s", s)
 	}
 
 	// With uninitialised tracker, wrapURL should return value identical to input
 	u := "https://xyzzy.org/foo/bar/?pet=pig"
-	s = myTracker.WrapURL(u)
+	s = w.WrapURL(u)
 	if s != u {
 		t.Errorf("Expecting empty result from InitialOpenPixel, got %s", s)
 	}
@@ -261,28 +261,40 @@ func TestEncodeDecodeLinkFaultyInputs(t *testing.T) {
 	link := RandomURLWithPath()
 	trkDomain := RandomBaseURL()
 
-	// Faulty inputs - invalid action
-	url, err := spmta.EncodeLink(trkDomain, "pigs", msgID, recip, link)
-	if err.Error() != "Invalid encodeAction" {
-		t.Error(err)
+	// faulty inputs to EecodeLink
+	eList := [][]string{
+		{"Invalid encodeAction", trkDomain, "pigs"},                              // invalid action
+		{"empty url", "", "click"},                                               // blank tracking domain
+		{"invalid URI", "notaurl", "click"},                                      // invalid tracking domain
+		{"Can't have query parameters", "https://example.com?pets=dog", "click"}, // got query parameter
+	}
+	for _, e := range eList {
+		url, err := spmta.EncodeLink(e[1], e[2], msgID, recip, link)
+		if !strings.Contains(err.Error(), e[0]) {
+			t.Error(err)
+		}
+		_ = url
 	}
 
-	// Faulty inputs - blank tracking domain
-	url, err = spmta.EncodeLink("", "click", msgID, recip, link)
-	if !strings.Contains(err.Error(), "empty url") {
-		t.Error(err)
+	// faulty inputs to DecodeLink
+	dList := [][]string{
+		// chopped short base64 data
+		{"illegal base64 data", "https://sjfbcxoeff.swxpldnj/eJwUzFEOgjAMBuC7_M"},
+		// invalid zlib data (penultimate character changed)
+		{"invalid checksum", "https://sjfbcxoeff.swxpldnj/eJwUzEsOgjAQBuC7_GsCxdBEu_ImZGb6QqlBOojBeHfjBb4PSBQOggY6busMh6y6VNd1dNv3rFlUNmrz-_6MnmLHR2KapKBBqWmcPByMMeZsrT-xDcOF-9gPjAarLH-br_XxmpOGQm048P0FAAD__7gCJdP="},
+		// empty
+		{"Invalid link path", ""},
+		// not a valid URL (contains nonprintable ASCII)
+		{"invalid control character in URL", "\n"},
+		// too many / separators
+		{"Invalid link path", "https://cats.dogs/too/many/separators"},
 	}
-	// invalid tracking domain
-	url, err = spmta.EncodeLink("notaurl", "click", msgID, recip, link)
-	if !strings.Contains(err.Error(), "invalid URI") {
-		t.Error(err)
+	for _, d := range dList {
+		_, _, _, err := spmta.DecodeLink(d[1])
+		if !strings.Contains(err.Error(), d[0]) {
+			t.Error(err)
+		}
 	}
-	// got query parameter
-	url, err = spmta.EncodeLink("https://example.com?pets=dog", "click", msgID, recip, link)
-	if !strings.Contains(err.Error(), "Can't have query parameters") {
-		t.Error(err)
-	}
-	_ = url // unused
 }
 
 // Test functions that are usually called back by the smtpproxy
