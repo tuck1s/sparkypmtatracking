@@ -307,7 +307,7 @@ func TestSparkPostEventNDJSONFaultyInputs(t *testing.T) {
 	// Invalid input string, i.e. not properly constructed JSON
 	const eStrFaulty = `{"WD":{"act":"c`
 	_, err := spmta.SparkPostEventNDJSON(eStrFaulty, client)
-	if err.Error() != "unexpected end of JSON input" {
+	if !strings.Contains(err.Error(), "end of JSON") {
 		t.Error(err)
 	}
 
@@ -337,7 +337,7 @@ func TestSparkPostEventNDJSONFaultyInputs(t *testing.T) {
 	}
 	client.Set("msgID_"+augmentFaultyMsgID, augmentFaulty, ttl)
 	_, err = spmta.SparkPostEventNDJSON(string(eBytes), client)
-	if err.Error() != "unexpected end of JSON input" {
+	if !strings.Contains(err.Error(), "end of JSON") {
 		t.Error(err)
 	}
 }
@@ -350,14 +350,14 @@ func TestSparkPostIngestFaultyInputs(t *testing.T) {
 	host := "http://api.sparkpost.com/not_an_api"
 	apiKey := "junk"
 	err := spmta.SparkPostIngest(ingestData, client, host, apiKey)
-	if err.Error() != "Could not proceed using http! Only https is allowed to access the api." {
+	if !strings.Contains(err.Error(), "Only https is allowed") {
 		t.Error(err)
 	}
 
 	// provoke an error in JSON response
 	host = "https://example.com/"
 	err = spmta.SparkPostIngest(ingestData, client, host, apiKey)
-	if err.Error() != "invalid character '<' looking for beginning of value" {
+	if !strings.Contains(err.Error(), "invalid character") {
 		t.Error(err)
 	}
 }
@@ -372,7 +372,7 @@ func TestFeedEventsFaultyInputs(t *testing.T) {
 	host := "http://api.sparkpost.com/not_an_api"
 	apiKey := "junk"
 	err := spmta.FeedEvents(client, host, apiKey, testTime)
-	if err.Error() != "unexpected end of JSON input" {
+	if !strings.Contains(err.Error(), "end of JSON") {
 		t.Error(err)
 	}
 }

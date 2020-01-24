@@ -207,19 +207,18 @@ func TestEncodeDecodePath(t *testing.T) {
 		expected := big[0:i]
 		_, err := rand.Read(expected) // Generate random byte string of varying length
 		if err != nil {
-			t.Errorf(err.Error())
+			t.Error(err)
 		}
 		enc, err := spmta.EncodePath(expected)
 		if err != nil {
-			t.Errorf(err.Error())
+			t.Error(err)
 		}
 		got, err := spmta.DecodePath(enc)
 		if err != nil {
-			t.Errorf(err.Error())
+			t.Error(err)
 		}
 		if bytes.Compare(expected, got) != 0 {
 			t.Errorf("EncodePath / DecodePath mismatch\nGot and expected values differ:\n---Got\n%s\n\n---Expected\n%s\n", got, expected)
-
 		}
 	}
 }
@@ -275,16 +274,15 @@ func TestEncodeDecodeLinkFaultyInputs(t *testing.T) {
 	}
 	// invalid tracking domain
 	url, err = spmta.EncodeLink("notaurl", "click", msgID, recip, link)
-	if err.Error() != "parse notaurl: invalid URI for request" {
+	if !strings.Contains(err.Error(), "invalid URI") {
 		t.Error(err)
 	}
-	fmt.Println(url, err)
 	// got query parameter
 	url, err = spmta.EncodeLink("https://example.com?pets=dog", "click", msgID, recip, link)
-	if err.Error() != "Can't have query parameters in the tracking URL" {
+	if !strings.Contains(err.Error(), "Can't have query parameters") {
 		t.Error(err)
 	}
-	fmt.Println(url, err)
+	_ = url // unused
 }
 
 // Test functions that are usually called back by the smtpproxy
