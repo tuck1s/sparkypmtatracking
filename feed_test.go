@@ -149,7 +149,8 @@ func startMockIngest(t *testing.T, addrPort string) {
 
 // Test the feeder function by creating a mockup endpoint that will receive data that we push to it
 func TestFeedForever(t *testing.T) {
-	p := rand.Intn(1000) + 8000
+	rand.Seed(time.Now().UTC().UnixNano())
+	p := rand.Intn(1000) + 8000 // use a random port unmber as workaround for resource hogging during debug
 	mockIngestAddrPort := ":" + strconv.Itoa(p)
 
 	// Start the mock SparkPost endpoint server concurrently

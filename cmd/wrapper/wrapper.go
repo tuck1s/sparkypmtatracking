@@ -42,11 +42,9 @@ func main() {
 		defer upstreamDebugFile.Close()
 	}
 
-	var myWrapper *spmta.Wrapper // Will be nil if not using engagement tracking
-
 	log.Println("Engagement tracking URL:", *wrapURL)
-	myWrapper, err = spmta.NewWrapper(*wrapURL)
-	if err != nil && err.Error() != "parse : empty url" {
+	myWrapper, err := spmta.NewWrapper(*wrapURL)
+	if err != nil && err.Error() != "parse : empty url" { // use contains
 		log.Fatal(err)
 	}
 

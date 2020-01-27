@@ -385,7 +385,6 @@ func TestProcessMessageHeadersFaultyInputs(t *testing.T) {
 	if err.Error() != "mail: header not in message" {
 		t.Error(err)
 	}
-
 	// Correct number of TO addresses
 	message.Header = mail.Header{
 		"From":    []string{"John Doe <jdoe@machine.example>"},
@@ -396,12 +395,10 @@ func TestProcessMessageHeadersFaultyInputs(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
 	// Too many recipient addresses
 	message.Header["Cc"] = []string{"Mary Smith 2<mary2@example.net>"}
 	err = w.ProcessMessageHeaders(message.Header)
 	if err == nil {
 		t.Error(err)
 	}
-
 }
