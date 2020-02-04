@@ -92,6 +92,9 @@ func (s *Session) Greet(helotype string) ([]string, int, string, error) {
 	)
 	s.bkd.logger(cmdTwiddle(s), helotype)
 	host, _, _ := net.SplitHostPort(s.bkd.outHostPort)
+	if host == "" {
+		host = "smtpproxy.localhost" // add dummy value in
+	}
 	code, msg, err = s.upstream.Hello(host)
 	if err != nil {
 		s.bkd.loggerAlways(respTwiddle(s), helotype, "error", err.Error())

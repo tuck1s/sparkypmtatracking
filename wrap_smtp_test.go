@@ -3,17 +3,28 @@ package sparkypmtatracking_test
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	smtpproxy "github.com/tuck1s/go-smtpproxy"
 	spmta "github.com/tuck1s/sparkyPMTATracking"
+)
+
+const (
+	Init = iota
+	Greeted
+	AskedUsername
+	AskedPassword
+	GotPassword
 )
 
 // Test design is to make a "sandwich" with wrapper in the middle.
@@ -24,6 +35,7 @@ type Backend struct {
 
 // A Session is returned after successful login. Here hold information that needs to persist across message phases.
 type Session struct {
+	MockState int
 }
 
 // mockSMTPServer should be invoked as a goroutine to allow tests to continue
@@ -44,75 +56,97 @@ func mockSMTPServer(addr string) {
 // Init the backend. This does not need to do much.
 func (bkd *Backend) Init() (smtpproxy.Session, error) {
 	var s Session
-	fmt.Printf("--- Mock server init")
+	s.MockState = Init
 	return &s, nil
 }
 
 // Greet the upstream host and report capabilities back.
 func (s *Session) Greet(helotype string) ([]string, int, string, error) {
-	caps := []string{"8BITMIME", "AUTH", "CHUNKING", "DSN", "ENHANCEDSTATUSCODES", "SIZE 0", "SMTPUTF8", "STARTTLS"}
-	code := 220
-	msg := "mock server ready"
-	return caps, code, msg, nil
+	s.MockState = Greeted
+	caps := []string{"8BITMIME", "STARTTLS", "ENHANCEDSTATUSCODES", "AUTH LOGIN PLAIN", "SMTPUTF8"}
+	return caps, 220, "", nil
 }
 
 // StartTLS command
 func (s *Session) StartTLS() (int, string, error) {
-	code := 250
-	msg := "blah"
-	return code, msg, nil
+	return 220, "", nil
 }
 
-//Auth command backend handler
+const mockMsg = "2.0.0 mock server accepts all"
+
+//Auth command mock backend handler - naive, handles only AUTH LOGIN PLAIN
 func (s *Session) Auth(expectcode int, cmd, arg string) (int, string, error) {
-	return s.stub(expectcode, cmd, arg)
-}
-
-//Mail command backend handler
-func (s *Session) Mail(expectcode int, cmd, arg string) (int, string, error) {
-	return s.stub(expectcode, cmd, arg)
-}
-
-//Rcpt command backend handler
-func (s *Session) Rcpt(expectcode int, cmd, arg string) (int, string, error) {
-	return s.stub(expectcode, cmd, arg)
-}
-
-//Reset command backend handler
-func (s *Session) Reset(expectcode int, cmd, arg string) (int, string, error) {
-	return s.stub(expectcode, cmd, arg)
-}
-
-//Quit command backend handler
-func (s *Session) Quit(expectcode int, cmd, arg string) (int, string, error) {
-	return s.stub(expectcode, cmd, arg)
-}
-
-//Unknown command backend handler
-func (s *Session) Unknown(expectcode int, cmd, arg string) (int, string, error) {
-	return s.stub(expectcode, cmd, arg)
-}
-
-// Passthru a command to the upstream server, logging
-func (s *Session) stub(expectcode int, cmd, arg string) (int, string, error) {
-	code := 250
-	msg := "blah"
+	var code int
+	var msg string
+	switch s.MockState {
+	case Init:
+	case Greeted:
+		if arg == "LOGIN" {
+			code = 334
+			msg = base64.StdEncoding.EncodeToString([]byte("Username:"))
+			s.MockState = AskedUsername
+		} else if strings.HasPrefix(arg, "PLAIN") {
+			code = 235
+			msg = mockMsg
+			s.MockState = GotPassword
+		}
+	case AskedUsername:
+		code = 334
+		msg = base64.StdEncoding.EncodeToString([]byte("Password:"))
+		s.MockState = AskedPassword
+	case AskedPassword:
+		code = 235
+		msg = mockMsg
+		s.MockState = GotPassword
+	}
 	return code, msg, nil
+}
+
+//Mail command mock backend handler
+func (s *Session) Mail(expectcode int, cmd, arg string) (int, string, error) {
+	return 250, mockMsg, nil
+}
+
+//Rcpt command mock backend handler
+func (s *Session) Rcpt(expectcode int, cmd, arg string) (int, string, error) {
+	return 250, mockMsg, nil
+}
+
+//Reset command mock backend handler
+func (s *Session) Reset(expectcode int, cmd, arg string) (int, string, error) {
+	s.MockState = Init
+	return 250, "2.0.0 mock reset", nil
+}
+
+//Quit command mock backend handler
+func (s *Session) Quit(expectcode int, cmd, arg string) (int, string, error) {
+	s.MockState = Init
+	return 221, "2.3.0 mock says bye", nil
+}
+
+//Unknown command mock backend handler
+func (s *Session) Unknown(expectcode int, cmd, arg string) (int, string, error) {
+	return 500, "mock does not recognize this command", nil
+}
+
+type discardCloser struct {
+	io.Writer
+}
+
+func (discardCloser) Close() error {
+	return nil
 }
 
 // DataCommand pass upstream, returning a place to write the data AND the usual responses
+// If you want to see the mail contents, replace Discard with os.Stdout
 func (s *Session) DataCommand() (io.WriteCloser, int, string, error) {
-	// var outbuf bytes.Buffer
-	code := 250
-	msg := "blah"
-	return os.Stdout, code, msg, nil
+	return discardCloser{Writer: ioutil.Discard}, 354, `3.0.0 mock says continue.  finished with "\r\n.\r\n"`, nil
 }
 
 // Data body (dot delimited) pass upstream, returning the usual responses
 func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
-	code := 250
-	msg := "blah"
-	return code, msg, nil
+	io.Copy(w, r)
+	return 250, "2.0.0 OK mock got your dot", nil
 }
 
 //-----------------------------------------------------------------------------
@@ -202,7 +236,7 @@ func TestWrapSMTP(t *testing.T) {
 	go startProxy(s)
 
 	// open a test client TODO - for now just give time for the goroutines to start
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 60; i++ {
 		time.Sleep(time.Second)
 		fmt.Println(".")
 	}

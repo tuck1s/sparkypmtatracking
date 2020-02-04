@@ -19,11 +19,12 @@ var TransparentGif = []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff" +
 // where xyzzy = base64 urlsafe encoded, Zlib compressed, []byte
 // These are written to the Redis queue
 func TrackingServer(w http.ResponseWriter, req *http.Request) {
+	// Emulate what SparkPost engagement tracker endpoint does. Necessary only for testing with bouncy sink.
+	w.Header().Set("Server", "msys-http")
 	switch req.Method {
 	case "GET":
 		break
 	default:
-		// Emulate what SparkPost engagement tracker endpoint does. Not strictly necessary for PMTA
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -68,9 +69,6 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
-	// Emulate response that SparkPost gives on GET opens, clicks and OPTIONS method. Change as required
-	w.Header().Set("Server", "msys-http")
 
 	switch e.WD.Action {
 	case "o":
