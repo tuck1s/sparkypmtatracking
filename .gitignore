@@ -10,6 +10,7 @@ cmd/wrapper/__debug_bin
 .DS_Store
 debug*.eml
 debug*.txt
+# exclude real certs and keys
 *.pem
 c.out
 # exclude local build binaries

@@ -9,8 +9,8 @@ import (
 	"io/ioutil"
 	"log"
 	"math/rand"
+	"net/smtp"
 	"os"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +18,63 @@ import (
 	smtpproxy "github.com/tuck1s/go-smtpproxy"
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
+
+// localhostCert is a PEM-encoded TLS cert.pem, made for domain test.example.com
+//		openssl req -nodes -new -x509 -keyout key.pem -out cert.pem
+var localhostCert = []byte(`
+-----BEGIN CERTIFICATE-----
+MIIDvDCCAqQCCQDG9Km7C037rDANBgkqhkiG9w0BAQsFADCBnzELMAkGA1UEBhMC
+dWsxDzANBgNVBAgMBkxvbmRvbjEPMA0GA1UEBwwGTG9uZG9uMRIwEAYDVQQKDAlT
+cGFya1Bvc3QxHjAcBgNVBAsMFU1lc3NhZ2luZyBFbmdpbmVlcmluZzEZMBcGA1UE
+AwwQdGVzdC5leGFtcGxlLmNvbTEfMB0GCSqGSIb3DQEJARYQdGVzdEBleGFtcGxl
+LmNvbTAeFw0yMDAyMDYyMTIyMDNaFw0yMDAzMDcyMTIyMDNaMIGfMQswCQYDVQQG
+EwJ1azEPMA0GA1UECAwGTG9uZG9uMQ8wDQYDVQQHDAZMb25kb24xEjAQBgNVBAoM
+CVNwYXJrUG9zdDEeMBwGA1UECwwVTWVzc2FnaW5nIEVuZ2luZWVyaW5nMRkwFwYD
+VQQDDBB0ZXN0LmV4YW1wbGUuY29tMR8wHQYJKoZIhvcNAQkBFhB0ZXN0QGV4YW1w
+bGUuY29tMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4yGJRYAI6xtQ
+ZPRxIWU+ZjlKo66LFvfr2VrWd30m8dflB0CNMkaaEMGt29jwLvzkP/mfn5dYVw3E
+dFJ2yBGR3wDy02ssmBVaOYkbYxgxeFa9jIgBLJONA3HIJRjn91/3lSCxDo6cE7l+
+ufhf8pc78YBZvhbC50kBajQtYaENcca9asj5cCRHS44hL7sCzN4kGETkg1jYtocT
+CMjJIgQ3dJool7M9MEAafWiFnIcO76O/jxewggLgOkfj7i9Y1iP6aWScEq6nNkW7
+8xFNqFafnK7W85TzkpfRIN/ntpEwgPcUHG4b4AWpXWR6q+1do25WgaWvt/od45KN
+aIo1kylOwQIDAQABMA0GCSqGSIb3DQEBCwUAA4IBAQCODjmvtqracVuOjsRp7841
+7glTqDQeXIUr3X7UvDTyvl70oeGeqnaEs3hO79T15gz0pKlKbYlB3B4v7fldmrLU
+mu0uQ7W112NBXYt71wpwuVQWdWSRi9rcAyvuf2nHLZ9fVjczxbCAi+QUFVY+ERoO
+CfngvPkPQvLB7VT/oKXKN+j8bXBJ+fYLA6fX4kzpuwx9hf+ay9x+JpPAB/dPEDjB
+KsbnfZsIPeuERAlWoSX/c9ggXPXzh95oZz6RhicmtPy3z2ZYJL4BsgEtbazOc6aO
+7c/t3Z1FScoSgCql4MXv9kLVL2LNGTWja89pnFnRaobagQ7XB0MEUotrM0ow18SM
+-----END CERTIFICATE-----`)
+
+// corresponding private key.pem
+var localhostKey = []byte(`
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQDjIYlFgAjrG1Bk
+9HEhZT5mOUqjrosW9+vZWtZ3fSbx1+UHQI0yRpoQwa3b2PAu/OQ/+Z+fl1hXDcR0
+UnbIEZHfAPLTayyYFVo5iRtjGDF4Vr2MiAEsk40DccglGOf3X/eVILEOjpwTuX65
++F/ylzvxgFm+FsLnSQFqNC1hoQ1xxr1qyPlwJEdLjiEvuwLM3iQYROSDWNi2hxMI
+yMkiBDd0miiXsz0wQBp9aIWchw7vo7+PF7CCAuA6R+PuL1jWI/ppZJwSrqc2Rbvz
+EU2oVp+crtbzlPOSl9Eg3+e2kTCA9xQcbhvgBaldZHqr7V2jblaBpa+3+h3jko1o
+ijWTKU7BAgMBAAECggEAHbtvH8Tx5ezuajjBcnCxaWpIhgK8PGZ53jsQ5hVg+rmb
+RobBtPofAuCHpMbSMiRysJk5twd1zfeEZwHAgNIj+UBDiT93V/U7mVqEVkV9fFZG
+e9X16WLrS68iVxDalLxgSYo9Az3R2pcmqquDy9rWQvfdR4/tNZ+N6twnsKcHfoQZ
+Z2lIZrmbR1ZqAEK7T7J5rm2WR+430cuTGEl/X39iIVimwo9QZIs6VikYRYyJoS8u
+8VtNsPY7lhnoPctMyErzWeslZXThFmuA5xqtEgFai51dhiJd/+iLkKtbHkfiLeF9
+ej+b40LnPT/rnYkBkyyvp2vVXnEUxPEAOzImzE8bQQKBgQD8TP5/Lg/lGK6CcSjD
+XG3/w0sfFQtC+oN3I/iFv/tgTQQRF/el7uF79si31TicZPDJgKbnuOGkOdSEyl4u
+Mg4yEwX4e+Grb13aENZb5p+fyN91P0jD+4lzLm6k4RaSN/EkDEe9LSn+wIUedO/A
+iG4S79EPyYo8pWdNUBO4ZQx3uQKBgQDmdhFiPIdynNDWy1IxhVUnrUuDMyUKFNZB
+Rd3KgABgfOBcdB9oeFEijsH86DI2kjHO+rVyCC9F1s8H5VC3eDKtuUaExqBixtu6
+TB3BXX+ZapiH8dThXtIa8vteTD5MHLC7pDcESVGzJH3vhdcOhek7es8j78vXZRZq
+q/teONQDSQKBgGBh2WckZZYTU7cpG3VmPe9S38PD+kVgBhDhgPM3YARt53vQOB7/
+nswIfq0bm0DDnuibaSdkjW57WSBRXqEvJhUjB0jhqlgfdy7y97Cr7ZbQ2eykfFvC
+H8QMnOAHzOOW01v+BPnT4xMa4L+91Eks1UAOtULerxxz4365dI8gqx6hAoGAT5iZ
+um8jbN9idb01fysI1TJSMVc5xLibo2GpD6aT+r9Gkkf9DQz5INFjiKD9rsFheJY4
+ktDm2t0tFhIKhcN65WtnQraDcHo0K6zcXguX5Xnegp1wpAIm2O3xCYmVvp3uIHDA
+G7fjAtdos5BrTXXMryFkZ4oLwjIEwwTxRYKlHxkCgYEAi3lkuZl5soQT3d2tkhmc
+F6WuDkR4nHxalD05oYtpjAPGpJqwJsyChFAyuUm7kn3qeX0l/Ll4GT6V4KsGQyin
+g3Iip0KPOiY+ndAxffTAAiyjFHB7UVe5vfe8NAIU9eBDT8Ibbi2ay9IhQaRABWOc
+KnpOfyDnCZbjNekskQaOqiE=
+-----END PRIVATE KEY-----`)
 
 const (
 	Init = iota
@@ -160,28 +217,16 @@ func startProxy(s *smtpproxy.Server) {
 }
 
 // wrap_smtp tests
-func notestWrapSMTP(t *testing.T) {
-	inHostPort := ":5587"
+func TestWrapSMTP(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())
-	p := 6317 // rand.Intn(1000) + 6000 // use a random port unmber as workaround for resource hogging during debug
-	outHostPort := ":" + strconv.Itoa(p)
-	certfile := "fullchain.pem"  // make this load from an embedded string
-	privkeyfile := "privkey.pem" //make this load from a string
+	inHostPort := ":5587"
+	outHostPort := ":5588"
 	verboseOpt := true
 	downstreamDebug := "debug_wrap_smtp_test.log"
-	upstreamDataDebug := "debug_wrap_smtp_test_upstream.eml"
 	wrapURL := "https://track.example.com"
 	insecureSkipVerify := true
-	// Logging of proxy to upstream server DATA (in RFC822 .eml format)
-	var upstreamDebugFile *os.File
-	if upstreamDataDebug != "" {
-		// Logging of proxy to upstream server DATA (in RFC822 .eml format)
-		upstreamDebugFile, err := os.OpenFile(upstreamDataDebug, os.O_CREATE|os.O_WRONLY, 0644)
-		if err != nil {
-			t.Error(err)
-		}
-		defer upstreamDebugFile.Close()
-	}
+	var upstreamDebugFile *os.File // placeholder
+
 	myWrapper, err := spmta.NewWrapper(wrapURL)
 	if err != nil {
 		log.Fatal(err)
@@ -194,30 +239,19 @@ func notestWrapSMTP(t *testing.T) {
 	s.ReadTimeout = 60 * time.Second
 	s.WriteTimeout = 60 * time.Second
 
-	subject, err := os.Hostname() // This is the fallback in case we have no cert / privkey to give us a Subject
+	// Gather TLS credentials from local cert/key
+	// Use these with the test-harness server and also set the EHLO server name
+	cer, err := tls.X509KeyPair(localhostCert, localhostKey)
 	if err != nil {
-		t.Errorf("Can't read hostname")
+		t.Error(err)
 	}
-
-	// Gather TLS credentials from filesystem. Use these with the server and also set the EHLO server name
-	if certfile == "" || privkeyfile == "" {
-		log.Println("Warning: certfile or privkeyfile not specified - proxy will NOT offer STARTTLS to clients")
-	} else {
-		cer, err := tls.LoadX509KeyPair(certfile, privkeyfile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		config := &tls.Config{Certificates: []tls.Certificate{cer}}
-		s.TLSConfig = config
-
-		leafCert, err := x509.ParseCertificate(cer.Certificate[0])
-		if err != nil {
-			log.Fatal(err)
-		}
-		subject = leafCert.Subject.CommonName
-		log.Println("Gathered certificate", certfile, "and key", privkeyfile)
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	s.TLSConfig = config
+	leafCert, err := x509.ParseCertificate(cer.Certificate[0])
+	if err != nil {
+		t.Error(err)
 	}
-	s.Domain = subject
+	s.Domain = leafCert.Subject.CommonName
 
 	// Logging of downstream (client to proxy server) commands and responses
 	if downstreamDebug != "" {
@@ -235,9 +269,44 @@ func notestWrapSMTP(t *testing.T) {
 	// start the proxy
 	go startProxy(s)
 
-	// open a test client TODO - for now just give time for the goroutines to start
-	for i := 0; i < 1; i++ {
-		time.Sleep(time.Second)
-		fmt.Println(".")
+	// Allow server a little while to start, then send a test mail using standard net/smtp.Client
+	c, err := smtp.Dial(inHostPort)
+	for i := 0; err != nil && i < 10; i++ {
+		time.Sleep(time.Millisecond * 100)
+		c, err = smtp.Dial(inHostPort)
+	}
+	if err != nil {
+		t.Error(err)
+	}
+
+	err = c.Hello("testclient.local")
+	if err != nil {
+		t.Error(err)
+	}
+	err = c.Mail(RandomRecipient())
+	if err != nil {
+		t.Error(err)
+	}
+	err = c.Rcpt(RandomRecipient())
+	if err != nil {
+		t.Error(err)
+	}
+	w, err := c.Data()
+	if err != nil {
+		t.Error(err)
+	}
+	testEmail := RandomTestEmail()
+	r := strings.NewReader(testEmail)
+	_, err = io.Copy(w, r)
+	if err != nil {
+		t.Error(err)
+	}
+	err = w.Close()
+	if err != nil {
+		t.Error(err)
+	}
+	err = c.Quit()
+	if err != nil {
+		t.Error(err)
 	}
 }

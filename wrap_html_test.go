@@ -32,6 +32,8 @@ const testHTMLTemplate1 = `<!DOCTYPE html>
 </html>
 `
 
+const testTextTemplate1 = `Spicy jalapeno bacon ipsum dolor amet pariatur mollit fatback venison, cillum occaecat quis ut labore pork belly culpa ea bacon in spare ribs.`
+
 // ioHarness takes input as a string, expected output as a string,
 // calls the "io.Copy-like" function f (the function under test), and compares the returned output with expected
 func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error), t *testing.T) {
@@ -108,6 +110,35 @@ func RandomURLWithPath() string {
 
 func RandomRecipient() string {
 	return RandomWord() + "@" + RandomWord() + "." + RandomWord()
+}
+
+const testEmailTemplate = `To: %s
+Content-Type: multipart/alternative; boundary="D7F------------D7FD5A0B8AB9C65CCDBFA872"
+MIME-Version: 1.0
+Subject: Fresh, tasty Avocados delivered straight to your door!
+From: %s
+
+--D7F------------D7FD5A0B8AB9C65CCDBFA872
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="UTF-8"
+
+%s
+
+--D7F------------D7FD5A0B8AB9C65CCDBFA872
+Content-Transfer-Encoding: 8bit
+Content-Type: text/html; charset="UTF-8"
+
+%s
+--D7F------------D7FD5A0B8AB9C65CCDBFA872`
+
+func RandomTestEmail() string {
+	// create HTML body contents, then place that inside an email
+	URL1 := RandomURLWithPath()
+	URL2 := RandomURLWithPath()
+	testHTML := testHTML(testHTMLTemplate1, URL1, URL2)
+	to := RandomRecipient()
+	from := RandomRecipient()
+	return fmt.Sprintf(testEmailTemplate, to, from, testTextTemplate1, testHTML)
 }
 
 func TestTrackHTML(t *testing.T) {
@@ -317,31 +348,8 @@ func TestWrapperActive(t *testing.T) {
 	}
 }
 
-const testEmailTemplate = `To: Bob <bob.lumreeker@gmail.com>
-Content-Type: multipart/alternative; boundary="D7F------------D7FD5A0B8AB9C65CCDBFA872"
-MIME-Version: 1.0
-Subject: Fresh, tasty Avocados delivered straight to your door!
-From: "Steve At SparkPost" <steve@example.com>
-
---D7F------------D7FD5A0B8AB9C65CCDBFA872
-Content-Transfer-Encoding: 7bit
-Content-Type: text/plain; charset="UTF-8"
-
-Spicy jalapeno bacon ipsum dolor amet pariatur mollit fatback venison, cillum occaecat quis ut labore pork belly culpa ea bacon in spare ribs.
-
---D7F------------D7FD5A0B8AB9C65CCDBFA872
-Content-Transfer-Encoding: 8bit
-Content-Type: text/html; charset="UTF-8"
-
-%s
---D7F------------D7FD5A0B8AB9C65CCDBFA872`
-
 func TestProcessMessageHeadersAndBody(t *testing.T) {
-	// create HTML body contents, then place that inside an email
-	URL1 := RandomURLWithPath()
-	URL2 := RandomURLWithPath()
-	testHTML := testHTML(testHTMLTemplate1, URL1, URL2)
-	testEmail := fmt.Sprintf(testEmailTemplate, testHTML)
+	testEmail := RandomTestEmail()
 	message, err := mail.ReadMessage(strings.NewReader(testEmail))
 	if err != nil {
 		t.Error(err)
