@@ -236,7 +236,7 @@ func TestWrapSMTP(t *testing.T) {
 	go startProxy(s)
 
 	// open a test client TODO - for now just give time for the goroutines to start
-	for i := 0; i < 60; i++ {
+	for i := 0; i < 1; i++ {
 		time.Sleep(time.Second)
 		fmt.Println(".")
 	}
