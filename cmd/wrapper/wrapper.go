@@ -1,12 +1,12 @@
 package main
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/tuck1s/go-smtpproxy"
@@ -29,10 +29,14 @@ func main() {
 	fmt.Println("Starting smtp proxy service on port", *inHostPort, ", logging to", *logfile)
 	log.Println("Starting smtp proxy service on port", *inHostPort)
 	log.Println("Outgoing host:port set to", *outHostPort)
+	log.Println("Engagement tracking URL:", *wrapURL)
+	myWrapper, err := spmta.NewWrapper(*wrapURL)
+	if err != nil && !strings.Contains(err.Error(), "empty url") {
+		log.Fatal(err)
+	}
 
-	// Logging of proxy to upstream server DATA (in RFC822 .eml format)
+	// Logging of upstream server DATA (in RFC822 .eml format) for debugging
 	var upstreamDebugFile *os.File
-	var err error
 	if *upstreamDataDebug != "" {
 		upstreamDebugFile, err = os.OpenFile(*upstreamDataDebug, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {
@@ -42,14 +46,6 @@ func main() {
 		defer upstreamDebugFile.Close()
 	}
 
-	log.Println("Engagement tracking URL:", *wrapURL)
-	myWrapper, err := spmta.NewWrapper(*wrapURL)
-	if err != nil && err.Error() != "parse : empty url" { // use contains
-		log.Fatal(err)
-	}
-
-	log.Println("insecure_skip_verify (Skip check of peer cert on upstream side):", *insecureSkipVerify)
-
 	// Set up parameters that the backend will use
 	be := spmta.NewBackend(*outHostPort, *verboseOpt, upstreamDebugFile, myWrapper, *insecureSkipVerify)
 	s := smtpproxy.NewServer(be)
@@ -57,32 +53,32 @@ func main() {
 	s.ReadTimeout = 60 * time.Second
 	s.WriteTimeout = 60 * time.Second
 
-	subject, err := os.Hostname() // This is the fallback in case we have no cert / privkey to give us a Subject
-	if err != nil {
-		log.Fatal("Can't read hostname")
-	}
-
-	// Gather TLS credentials from filesystem. Use these with the server and also set the EHLO server name
-	if *certfile == "" || *privkeyfile == "" {
-		log.Println("Warning: certfile or privkeyfile not specified - proxy will NOT offer STARTTLS to clients")
-	} else {
-		cer, err := tls.LoadX509KeyPair(*certfile, *privkeyfile)
+	// Gather TLS credentials for the proxy server
+	if *certfile != "" && *privkeyfile != "" {
+		cert, err := ioutil.ReadFile(*certfile)
 		if err != nil {
 			log.Fatal(err)
 		}
-		config := &tls.Config{Certificates: []tls.Certificate{cer}}
-		s.TLSConfig = config
-
-		leafCert, err := x509.ParseCertificate(cer.Certificate[0])
+		privkey, err := ioutil.ReadFile(*privkeyfile)
 		if err != nil {
 			log.Fatal(err)
 		}
-		subject = leafCert.Subject.CommonName
 		log.Println("Gathered certificate", *certfile, "and key", *privkeyfile)
+		err = s.ServeTLS(cert, privkey)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		log.Println("certfile or privkeyfile not specified - proxy will NOT offer STARTTLS to clients")
+		s.Domain, err = os.Hostname() // This is the fallback in case we have no cert / privkey to give us a Subject
+		if err != nil {
+			log.Fatal("Can't read hostname")
+		}
 	}
-	s.Domain = subject
+
 	log.Println("Proxy will advertise itself as", s.Domain)
 	log.Println("Verbose SMTP conversation logging:", *verboseOpt)
+	log.Println("insecure_skip_verify (Skip check of peer cert on upstream side):", *insecureSkipVerify)
 
 	// Logging of downstream (client to proxy server) commands and responses
 	if *downstreamDebug != "" {

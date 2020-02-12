@@ -7,7 +7,7 @@ import (
 	"net"
 	"os"
 
-	"github.com/tuck1s/go-smtpproxy"
+	smtpproxy "github.com/tuck1s/go-smtpproxy"
 )
 
 //-----------------------------------------------------------------------------

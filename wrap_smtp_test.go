@@ -2,12 +2,10 @@ package sparkypmtatracking_test
 
 import (
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math/rand"
 	"net/smtp"
 	"os"
@@ -96,17 +94,21 @@ type Session struct {
 }
 
 // mockSMTPServer should be invoked as a goroutine to allow tests to continue
-func mockSMTPServer(addr string) {
+func mockSMTPServer(t *testing.T, addr string) {
 	mockbe := Backend{}
 	s := smtpproxy.NewServer(&mockbe)
 	s.Addr = addr
 	s.ReadTimeout = 60 * time.Second // changeme?
 	s.WriteTimeout = 60 * time.Second
+	err := s.ServeTLS(localhostCert, localhostKey)
+	if err != nil {
+		t.Error(err)
+	}
 
 	// Begin serving requests
 	fmt.Println("Upstream mock SMTP server listening on", s.Addr)
 	if err := s.ListenAndServe(); err != nil {
-		log.Fatal(err)
+		t.Error(err)
 	}
 }
 
@@ -209,11 +211,22 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 //-----------------------------------------------------------------------------
 // Start proxy server
 
-func startProxy(s *smtpproxy.Server) {
+func startProxy(t *testing.T, s *smtpproxy.Server) {
 	fmt.Println("Proxy (unit under test) listening on", s.Addr)
 	if err := s.ListenAndServe(); err != nil {
-		log.Fatal(err)
+		t.Error(err)
 	}
+}
+
+// tlsClientConfig is built from the passed in cert, privkey. InsecureSkipVerify allows self-signed certs to work
+func tlsClientConfig(cert []byte, privkey []byte) (*tls.Config, error) {
+	cer, err := tls.X509KeyPair(cert, privkey)
+	if err != nil {
+		return nil, err
+	}
+	config := &tls.Config{Certificates: []tls.Certificate{cer}}
+	config.InsecureSkipVerify = true
+	return config, nil
 }
 
 // wrap_smtp tests
@@ -229,30 +242,19 @@ func TestWrapSMTP(t *testing.T) {
 
 	myWrapper, err := spmta.NewWrapper(wrapURL)
 	if err != nil {
-		log.Fatal(err)
+		t.Error(err)
 	}
 
-	// Set up parameters that the backend will use
+	// Set up parameters that the backend will use, and initialise the proxy server parameters
 	be := spmta.NewBackend(outHostPort, verboseOpt, upstreamDebugFile, myWrapper, insecureSkipVerify)
 	s := smtpproxy.NewServer(be)
 	s.Addr = inHostPort
 	s.ReadTimeout = 60 * time.Second
 	s.WriteTimeout = 60 * time.Second
-
-	// Gather TLS credentials from local cert/key
-	// Use these with the test-harness server and also set the EHLO server name
-	cer, err := tls.X509KeyPair(localhostCert, localhostKey)
+	err = s.ServeTLS(localhostCert, localhostKey)
 	if err != nil {
 		t.Error(err)
 	}
-	config := &tls.Config{Certificates: []tls.Certificate{cer}}
-	s.TLSConfig = config
-	leafCert, err := x509.ParseCertificate(cer.Certificate[0])
-	if err != nil {
-		t.Error(err)
-	}
-	s.Domain = leafCert.Subject.CommonName
-
 	// Logging of downstream (client to proxy server) commands and responses
 	if downstreamDebug != "" {
 		dbgFile, err := os.OpenFile(downstreamDebug, os.O_CREATE|os.O_WRONLY, 0644)
@@ -264,10 +266,10 @@ func TestWrapSMTP(t *testing.T) {
 	}
 
 	// start the upstream mock SMTP server
-	go mockSMTPServer(outHostPort)
+	go mockSMTPServer(t, outHostPort)
 
 	// start the proxy
-	go startProxy(s)
+	go startProxy(t, s)
 
 	// Allow server a little while to start, then send a test mail using standard net/smtp.Client
 	c, err := smtp.Dial(inHostPort)
@@ -283,6 +285,18 @@ func TestWrapSMTP(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	if tls, _ := c.Extension("STARTTLS"); tls {
+		// client uses same certs as mock server and proxy, which seems fine for testing purposes
+		cfg, err := tlsClientConfig(localhostCert, localhostKey)
+		if err != nil {
+			t.Error(err)
+		}
+		err = c.StartTLS(cfg)
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
 	err = c.Mail(RandomRecipient())
 	if err != nil {
 		t.Error(err)
