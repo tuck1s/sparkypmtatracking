@@ -36,7 +36,7 @@ func main() {
 	}
 
 	// Logging of upstream server DATA (in RFC822 .eml format) for debugging
-	var upstreamDebugFile *os.File
+	var upstreamDebugFile *os.File // need this not in inner scope
 	if *upstreamDataDebug != "" {
 		upstreamDebugFile, err = os.OpenFile(*upstreamDataDebug, os.O_CREATE|os.O_WRONLY, 0644)
 		if err != nil {

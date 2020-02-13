@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"math/rand"
 	"net/smtp"
 	"net/textproto"
@@ -237,9 +238,21 @@ func TestWrapSMTP(t *testing.T) {
 	outHostPort := ":5588"
 	verboseOpt := true
 	downstreamDebug := "debug_wrap_smtp_test.log"
+	upstreamDataDebug := "debug_upstream.eml"
 	wrapURL := "https://track.example.com"
 	insecureSkipVerify := true
-	var upstreamDebugFile *os.File // placeholder
+
+	// Logging of upstream server DATA (in RFC822 .eml format) for debugging
+	var upstreamDebugFile *os.File
+	var err error
+	if upstreamDataDebug != "" {
+		upstreamDebugFile, err = os.OpenFile(upstreamDataDebug, os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			t.Fatal(err)
+		}
+		log.Println("Proxy writing upstream DATA to", upstreamDebugFile.Name())
+		defer upstreamDebugFile.Close()
+	}
 
 	myWrapper, err := spmta.NewWrapper(wrapURL)
 	if err != nil && !strings.Contains(err.Error(), "empty url") {
@@ -301,7 +314,7 @@ func TestWrapSMTP(t *testing.T) {
 		}
 	}
 
-	// Authenticate
+	// AUTH
 	auth := smtp.PlainAuth("", "user@example.com", "password", "")
 	err = c.Auth(auth)
 	if err != nil {
@@ -331,20 +344,45 @@ func TestWrapSMTP(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	err = c.Reset() // Not part of the usual happy path for a message ,but we can test
+
+	// Provoke unknown command
+	id, err := c.Text.Cmd("WEIRD")
 	if err != nil {
 		t.Error(err)
 	}
+	c.Text.StartResponse(id)
+	code, msg, err := c.Text.ReadResponse(501)
+	log.Println("Response to WEIRD command:", code, msg)
+	if code != 501 {
+		t.Fatalf("Provoked unknown command - got error %v", err)
+	}
+	c.Text.EndResponse(id)
+
+	// RESET is not part of the usual happy path for a message ,but we can test
+	err = c.Reset()
+	if err != nil {
+		t.Error(err)
+	}
+
+	// QUIT
 	err = c.Quit()
 	if err != nil {
 		t.Error(err)
 	}
 }
 
+func makeFakeSession(t *testing.T, be *spmta.Backend, url string) smtpproxy.Session {
+	c, err := textproto.Dial("tcp", url)
+	if err != nil {
+		t.Error(err)
+	}
+	return spmta.MakeSession(&smtpproxy.Client{Text: c}, be)
+}
+
 func TestWrapSMTPFaultyInputs(t *testing.T) {
 	outHostPort := ":9988"
-	verboseOpt := true
-	wrapURL := ""
+	verboseOpt := false // vary this from the usual
+	wrapURL := "https://track.example.com"
 	insecureSkipVerify := true
 	var upstreamDebugFile *os.File // placeholder
 
@@ -359,25 +397,53 @@ func TestWrapSMTPFaultyInputs(t *testing.T) {
 		t.Errorf("This test should have returned a non-nil error code")
 	}
 
+	const dummyServer = "example.com:80"
 	// Provoke error path in Greet (hitting an http server, not an smtp one)
-	c, err := textproto.Dial("tcp", "example.com:80")
-	if err != nil {
-		t.Error(err)
-	}
-	s := spmta.MakeSession(&smtpproxy.Client{Text: c}, be)
-	_, _, _, err = s.Greet("EHLO")
+	s := makeFakeSession(t, be, dummyServer)
+	caps, code, msg, err := s.Greet("EHLO")
 	if err == nil {
 		t.Errorf("This test should have returned a non-nil error code")
 	}
 
-	// Provoke error path in STARTTLS. Need to get a fresh connection
-	c, err = textproto.Dial("tcp", "example.com:80")
-	if err != nil {
-		t.Error(err)
-	}
-	s = spmta.MakeSession(&smtpproxy.Client{Text: c}, be)
-	_, _, err = s.StartTLS()
+	// Provoke error path in STARTTLS. Need to get a fresh connection each time
+	s = makeFakeSession(t, be, dummyServer)
+	code, msg, err = s.StartTLS()
 	if err == nil {
 		t.Errorf("This test should have returned a non-nil error code")
 	}
+
+	// Exercise the session unknown command handler (passthru)
+	s = makeFakeSession(t, be, dummyServer)
+	code, msg, err = s.Unknown(0, "NONSENSE", "")
+	if err == nil {
+		t.Errorf("This test should have returned a non-nil error code")
+	}
+
+	// Exercise the error paths in DataCommand
+	s = makeFakeSession(t, be, dummyServer)
+	w, code, msg, err := s.DataCommand()
+	if err == nil {
+		t.Errorf("This test should have returned a non-nil error code")
+	}
+
+	// Exercise the error paths in Data (body)
+	s = makeFakeSession(t, be, dummyServer)
+	r := strings.NewReader("it is only the hairs on a gooseberry") // this should cause a mailcopy error, as it's not valid RFC822
+	code, msg, err = s.Data(r, discardCloser{Writer: ioutil.Discard})
+	if err == nil {
+		t.Errorf("This test should have returned a non-nil error code")
+	}
+
+	s = makeFakeSession(t, be, dummyServer)
+	r = strings.NewReader(RandomTestEmail()) // valid email
+	code, msg, err = s.Data(r, os.Stdout)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// workaround these variables being "unused"
+	_ = caps
+	_ = code
+	_ = msg
+	_ = w
 }

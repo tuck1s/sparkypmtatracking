@@ -129,7 +129,8 @@ Content-Transfer-Encoding: 8bit
 Content-Type: text/html; charset="UTF-8"
 
 %s
---D7F------------D7FD5A0B8AB9C65CCDBFA872`
+--D7F------------D7FD5A0B8AB9C65CCDBFA872
+`
 
 func RandomTestEmail() string {
 	// create HTML body contents, then place that inside an email

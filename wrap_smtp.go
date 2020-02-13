@@ -44,7 +44,7 @@ func (bkd *Backend) loggerAlways(args ...interface{}) {
 	log.Println(args...)
 }
 
-// MakeSession returns
+// MakeSession returns a session for this client and backend
 func MakeSession(c *smtpproxy.Client, bkd *Backend) smtpproxy.Session {
 	var s Session
 	s.bkd = bkd    // just for logging
