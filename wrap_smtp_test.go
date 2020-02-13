@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"math/rand"
 	"net/smtp"
+	"net/textproto"
 	"os"
 	"strings"
 	"testing"
@@ -241,7 +242,7 @@ func TestWrapSMTP(t *testing.T) {
 	var upstreamDebugFile *os.File // placeholder
 
 	myWrapper, err := spmta.NewWrapper(wrapURL)
-	if err != nil {
+	if err != nil && !strings.Contains(err.Error(), "empty url") {
 		t.Error(err)
 	}
 
@@ -281,10 +282,13 @@ func TestWrapSMTP(t *testing.T) {
 		t.Error(err)
 	}
 
+	// EHLO
 	err = c.Hello("testclient.local")
 	if err != nil {
 		t.Error(err)
 	}
+
+	// STARTTLS
 	if tls, _ := c.Extension("STARTTLS"); tls {
 		// client uses same certs as mock server and proxy, which seems fine for testing purposes
 		cfg, err := tlsClientConfig(localhostCert, localhostKey)
@@ -297,6 +301,14 @@ func TestWrapSMTP(t *testing.T) {
 		}
 	}
 
+	// Authenticate
+	auth := smtp.PlainAuth("", "user@example.com", "password", "")
+	err = c.Auth(auth)
+	if err != nil {
+		t.Error(err)
+	}
+
+	// Submit an email .. MAIL FROM, RCPT TO, DATA ... QUIT
 	err = c.Mail(RandomRecipient())
 	if err != nil {
 		t.Error(err)
@@ -319,8 +331,53 @@ func TestWrapSMTP(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
+	err = c.Reset() // Not part of the usual happy path for a message ,but we can test
+	if err != nil {
+		t.Error(err)
+	}
 	err = c.Quit()
 	if err != nil {
 		t.Error(err)
+	}
+}
+
+func TestWrapSMTPFaultyInputs(t *testing.T) {
+	outHostPort := ":9988"
+	verboseOpt := true
+	wrapURL := ""
+	insecureSkipVerify := true
+	var upstreamDebugFile *os.File // placeholder
+
+	myWrapper, err := spmta.NewWrapper(wrapURL)
+	if err != nil && !strings.Contains(err.Error(), "empty url") {
+		t.Error(err)
+	}
+	// Set up parameters that the backend will use, and initialise the proxy server parameters
+	be := spmta.NewBackend(outHostPort, verboseOpt, upstreamDebugFile, myWrapper, insecureSkipVerify)
+	_, err = be.Init() // expect an error
+	if err == nil {
+		t.Errorf("This test should have returned a non-nil error code")
+	}
+
+	// Provoke error path in Greet (hitting an http server, not an smtp one)
+	c, err := textproto.Dial("tcp", "example.com:80")
+	if err != nil {
+		t.Error(err)
+	}
+	s := spmta.MakeSession(&smtpproxy.Client{Text: c}, be)
+	_, _, _, err = s.Greet("EHLO")
+	if err == nil {
+		t.Errorf("This test should have returned a non-nil error code")
+	}
+
+	// Provoke error path in STARTTLS. Need to get a fresh connection
+	c, err = textproto.Dial("tcp", "example.com:80")
+	if err != nil {
+		t.Error(err)
+	}
+	s = spmta.MakeSession(&smtpproxy.Client{Text: c}, be)
+	_, _, err = s.StartTLS()
+	if err == nil {
+		t.Errorf("This test should have returned a non-nil error code")
 	}
 }

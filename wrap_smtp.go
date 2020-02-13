@@ -44,18 +44,24 @@ func (bkd *Backend) loggerAlways(args ...interface{}) {
 	log.Println(args...)
 }
 
-// Init the backend. Here we establish the upstream connection
-func (bkd *Backend) Init() (smtpproxy.Session, error) {
+// MakeSession returns
+func MakeSession(c *smtpproxy.Client, bkd *Backend) smtpproxy.Session {
 	var s Session
-	bkd.logger("---Connecting upstream")
-	c, err := smtpproxy.Dial(bkd.outHostPort)
 	s.bkd = bkd    // just for logging
 	s.upstream = c // keep record of the upstream Client connection
+	return &s
+}
+
+// Init the backend. Here we establish the upstream connection
+func (bkd *Backend) Init() (smtpproxy.Session, error) {
+	bkd.logger("---Connecting upstream")
+	c, err := smtpproxy.Dial(bkd.outHostPort)
 	if err != nil {
-		bkd.loggerAlways(respTwiddle(&s), "Connection error", bkd.outHostPort, err.Error())
+		bkd.loggerAlways("< Connection error", bkd.outHostPort, err.Error())
+		return nil, err
 	}
-	bkd.logger(respTwiddle(&s), "Connection success", bkd.outHostPort)
-	return &s, nil
+	bkd.logger("< Connection success", bkd.outHostPort)
+	return MakeSession(c, bkd), nil
 }
 
 //-----------------------------------------------------------------------------
@@ -69,33 +75,32 @@ type Session struct {
 
 // cmdTwiddle returns different flow markers depending on whether connection is secure (like Swaks does)
 func cmdTwiddle(s *Session) string {
-	if _, isTLS := s.upstream.TLSConnectionState(); isTLS {
-		return "~>"
+	if s.upstream != nil {
+		if _, isTLS := s.upstream.TLSConnectionState(); isTLS {
+			return "~>"
+		}
 	}
 	return "->"
 }
 
 // respTwiddle returns different flow markers depending on whether connection is secure (like Swaks does)
 func respTwiddle(s *Session) string {
-	if _, isTLS := s.upstream.TLSConnectionState(); isTLS {
-		return "\t<~"
+	if s.upstream != nil {
+		if _, isTLS := s.upstream.TLSConnectionState(); isTLS {
+			return "\t<~"
+		}
 	}
 	return "\t<-"
 }
 
 // Greet the upstream host and report capabilities back.
 func (s *Session) Greet(helotype string) ([]string, int, string, error) {
-	var (
-		err  error
-		code int
-		msg  string
-	)
 	s.bkd.logger(cmdTwiddle(s), helotype)
 	host, _, _ := net.SplitHostPort(s.bkd.outHostPort)
 	if host == "" {
 		host = "smtpproxy.localhost" // add dummy value in
 	}
-	code, msg, err = s.upstream.Hello(host)
+	code, msg, err := s.upstream.Hello(host)
 	if err != nil {
 		s.bkd.loggerAlways(respTwiddle(s), helotype, "error", err.Error())
 		if code == 0 {
