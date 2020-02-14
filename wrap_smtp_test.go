@@ -1,13 +1,13 @@
 package sparkypmtatracking_test
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
-	"fmt"
 	"io"
 	"io/ioutil"
-	"log"
 	"math/rand"
+	"net/mail"
 	"net/smtp"
 	"net/textproto"
 	"os"
@@ -108,7 +108,7 @@ func mockSMTPServer(t *testing.T, addr string) {
 	}
 
 	// Begin serving requests
-	fmt.Println("Upstream mock SMTP server listening on", s.Addr)
+	t.Log("Upstream mock SMTP server listening on", s.Addr)
 	if err := s.ListenAndServe(); err != nil {
 		t.Error(err)
 	}
@@ -190,18 +190,18 @@ func (s *Session) Unknown(expectcode int, cmd, arg string) (int, string, error) 
 	return 500, "mock does not recognize this command", nil
 }
 
-type discardCloser struct {
+type myWriteCloser struct {
 	io.Writer
 }
 
-func (discardCloser) Close() error {
+func (myWriteCloser) Close() error {
 	return nil
 }
 
 // DataCommand pass upstream, returning a place to write the data AND the usual responses
 // If you want to see the mail contents, replace Discard with os.Stdout
 func (s *Session) DataCommand() (io.WriteCloser, int, string, error) {
-	return discardCloser{Writer: ioutil.Discard}, 354, `3.0.0 mock says continue.  finished with "\r\n.\r\n"`, nil
+	return myWriteCloser{Writer: ioutil.Discard}, 354, `3.0.0 mock says continue.  finished with "\r\n.\r\n"`, nil
 }
 
 // Data body (dot delimited) pass upstream, returning the usual responses
@@ -214,7 +214,7 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 // Start proxy server
 
 func startProxy(t *testing.T, s *smtpproxy.Server) {
-	fmt.Println("Proxy (unit under test) listening on", s.Addr)
+	t.Log("Proxy (unit under test) listening on", s.Addr)
 	if err := s.ListenAndServe(); err != nil {
 		t.Error(err)
 	}
@@ -250,7 +250,7 @@ func TestWrapSMTP(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		log.Println("Proxy writing upstream DATA to", upstreamDebugFile.Name())
+		t.Log("Proxy writing upstream DATA to", upstreamDebugFile.Name())
 		defer upstreamDebugFile.Close()
 	}
 
@@ -352,7 +352,7 @@ func TestWrapSMTP(t *testing.T) {
 	}
 	c.Text.StartResponse(id)
 	code, msg, err := c.Text.ReadResponse(501)
-	log.Println("Response to WEIRD command:", code, msg)
+	t.Log("Response to WEIRD command:", code, msg)
 	if code != 501 {
 		t.Fatalf("Provoked unknown command - got error %v", err)
 	}
@@ -429,16 +429,53 @@ func TestWrapSMTPFaultyInputs(t *testing.T) {
 	// Exercise the error paths in Data (body)
 	s = makeFakeSession(t, be, dummyServer)
 	r := strings.NewReader("it is only the hairs on a gooseberry") // this should cause a mailcopy error, as it's not valid RFC822
-	code, msg, err = s.Data(r, discardCloser{Writer: ioutil.Discard})
+	code, msg, err = s.Data(r, myWriteCloser{Writer: ioutil.Discard})
 	if err == nil {
 		t.Errorf("This test should have returned a non-nil error code")
 	}
 
 	s = makeFakeSession(t, be, dummyServer)
-	r = strings.NewReader(RandomTestEmail()) // valid email
-	code, msg, err = s.Data(r, os.Stdout)
+	input := RandomTestEmail()
+	r = strings.NewReader(input) // valid email
+
+	var buf bytes.Buffer
+	code, msg, err = s.Data(r, myWriteCloser{Writer: &buf})
 	if err != nil {
 		t.Error(err)
+	}
+	// buf now contains the "wrapped" email
+	outputMail, err := mail.ReadMessage(&buf)
+	if err != nil {
+		t.Error(err)
+	}
+	inputMail, err := mail.ReadMessage(strings.NewReader(input))
+	if err != nil {
+		t.Error(err)
+	}
+	// check the headers match
+	for hdrType, _ := range inputMail.Header {
+		in := inputMail.Header.Get(hdrType)
+		out := outputMail.Header.Get(hdrType)
+		if in != out {
+			t.Errorf("Header %v mismatch", hdrType)
+		}
+	}
+	// output mail should additionally have a message ID
+	msgID := outputMail.Header.Get(spmta.SparkPostMessageIDHeader)
+	if msgID == "" {
+		t.Errorf("outputMail missing message ID header %v", spmta.SparkPostMessageIDHeader)
+	}
+	// Compare body lengths
+	inBody, err := ioutil.ReadAll(inputMail.Body)
+	if err != nil {
+		t.Error(err)
+	}
+	outBody, err := ioutil.ReadAll(outputMail.Body)
+	if err != nil {
+		t.Error(err)
+	}
+	if len(inBody) > len(outBody) {
+		t.Errorf("output mail body short \n%v\n", string(outBody))
 	}
 
 	// workaround these variables being "unused"
