@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tuck1s/go-smtpproxy"
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
 
@@ -372,7 +371,7 @@ func TestProcessMessageHeadersAndBody(t *testing.T) {
 	}
 	// Handle the message body, via the external smtpproxy lib, grabbing the output into a buffer
 	var outbuf bytes.Buffer
-	bw, err := smtpproxy.HandleMessageBody(&outbuf, message.Header, message.Body, w)
+	bw, err := spmta.HandleMessageBody(&outbuf, message.Header, message.Body, *w)
 	if bw < len(testEmail) {
 		t.Errorf("A surprisingly small email, bw=%d", bw)
 	}
