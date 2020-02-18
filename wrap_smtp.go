@@ -1,6 +1,7 @@
 package sparkypmtatracking
 
 import (
+	"bytes"
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
@@ -205,30 +206,40 @@ func (s *Session) DataCommand() (io.WriteCloser, int, string, error) {
 
 // Data body (dot delimited) pass upstream, returning the usual responses
 func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
-	var w2 io.Writer // If upstream debugging, tee off a copy into the debug file.
-	if s.bkd.upstreamDataDebug != nil {
-		w2 = io.MultiWriter(w, s.bkd.upstreamDataDebug)
-	} else {
-		w2 = w
-	}
-	bytesWritten, err := s.bkd.wrapper.MailCopy(w2, r) // Pass in the engagement tracking info
+	var buf bytes.Buffer
+	err := s.bkd.wrapper.MailCopy(&buf, r) // Pass in the engagement tracking info
 	if err != nil {
 		msg := "DATA MailCopy error"
 		s.bkd.loggerAlways(respTwiddle(s), msg, err.Error())
 		return 0, msg, err
 	}
-	err = w.Close()
+	// Upstream debug output - nondestructively read buf contents
+	if s.bkd.upstreamDataDebug != nil {
+		dbgWritten, err := io.Copy(s.bkd.upstreamDataDebug, bytes.NewReader(buf.Bytes()))
+		if err != nil {
+			s.bkd.loggerAlways(respTwiddle(s), "upstreamDataDebug error", err, ", bytes written =", dbgWritten)
+			return 0, "", err
+		}
+	}
+	// Send the data upstream
+	count, err := io.Copy(w, &buf)
+	if err != nil {
+		msg := "DATA io.Copy error"
+		s.bkd.loggerAlways(respTwiddle(s), msg, err.Error())
+		return 0, msg, err
+	}
+	err = w.Close() // Need to close the data phase - then we should have response from upstream
 	code := s.upstream.DataResponseCode
 	msg := s.upstream.DataResponseMsg
 	if err != nil {
-		s.bkd.loggerAlways(respTwiddle(s), "DATA Close error", err, ", bytes written =", bytesWritten)
-	} else {
-		s.bkd.logger(respTwiddle(s), "DATA accepted, bytes written =", bytesWritten)
-		s.bkd.logger(respTwiddle(s), code, msg)
+		s.bkd.loggerAlways(respTwiddle(s), "DATA Close error", err, ", bytes written =", count)
+		return 0, msg, err
 	}
-	if !s.bkd.verbose {
+	if s.bkd.verbose {
+		s.bkd.logger(respTwiddle(s), "DATA accepted, bytes written =", count)
+	} else {
 		// Short-form logging - one line per message - used when "verbose" not set
-		log.Printf("Message DATA upstream,%d,%d,%s\n", bytesWritten, code, msg)
+		log.Printf("Message DATA upstream,%d,%d,%s\n", count, code, msg)
 	}
 	return code, msg, err
 }
@@ -261,58 +272,47 @@ func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
 }
 
 // MailCopy transfers the mail body from downstream (client) to upstream (server), using the engagement wrapper
-// The writer will be closed by the parent function, no need to close it here.
-func (wrap *Wrapper) MailCopy(dst io.Writer, src io.Reader) (int, error) {
-	bytesWritten := 0
+// The writer should be closed by the parent function
+func (wrap *Wrapper) MailCopy(dst io.Writer, src io.Reader) error {
 	if !wrap.Active() {
-		w64, err := io.Copy(dst, src) // wrapping inactive, just do a copy
-		return int(w64), err
+		_, err := io.Copy(dst, src) // wrapping inactive, just do a copy
+		return err
 	}
 	message, err := mail.ReadMessage(src)
 	if err != nil {
-		return bytesWritten, err
+		return err
 	}
-
 	err = wrap.ProcessMessageHeaders(message.Header)
 	if err != nil {
-		return bytesWritten, err
+		return err
 	}
-
 	// Pass through headers. The m.Header map does not preserve order, but that should not matter.
 	for hdrType, hdrList := range message.Header {
 		for _, hdrVal := range hdrList {
 			hdrLine := hdrType + ": " + hdrVal + smtpCRLF
-			bw, err := io.WriteString(dst, hdrLine)
-			bytesWritten += bw
+			_, err := io.WriteString(dst, hdrLine)
 			if err != nil {
-				return bytesWritten, err
+				return err
 			}
 		}
 	}
-
 	// Blank line denotes end of headers
-	bw, err := io.WriteString(dst, smtpCRLF)
-	bytesWritten += bw
+	_, err = io.WriteString(dst, smtpCRLF)
 	if err != nil {
-		return bytesWritten, err
+		return err
 	}
-
 	// Handle the message body
-	bw, err = wrap.HandleMessagePart(dst, message.Body, message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"))
-	bytesWritten += bw
-	return bytesWritten, err
+	return wrap.HandleMessagePart(dst, message.Body, message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"))
 }
 
 // HandleMessagePart walks the MIME structure, and may be called recursively. The incoming
 // content type and cte (content transfer encoding) are passed separately
-func (wrap *Wrapper) HandleMessagePart(dst io.Writer, part io.Reader, cType string, cte string) (int, error) {
-	bytesWritten := 0
+func (wrap *Wrapper) HandleMessagePart(dst io.Writer, part io.Reader, cType string, cte string) error {
 	// Check what MIME media type we have
 	mediaType, params, err := mime.ParseMediaType(cType)
 	if err != nil {
 		// if no media type, defensively handle as per plain, i.e. pass through
-		bytesWritten, err = handlePlainPart(dst, part)
-		return bytesWritten, err
+		return handlePlainPart(dst, part)
 	}
 	if strings.HasPrefix(mediaType, "text/html") {
 		// Insert decoder into incoming part, and encoder into dst. Quoted-Printable is automatically handled
@@ -327,41 +327,33 @@ func (wrap *Wrapper) HandleMessagePart(dst io.Writer, part io.Reader, cType stri
 				log.Println("Warning: don't know how to handle Content-Type-Encoding", cte)
 			}
 		}
-		bytesWritten, err = wrap.handleHTMLPart(dst, part)
+		_, err = wrap.TrackHTML(dst, part) // Wrap the links and add tracking pixels (if active)
 	} else {
 		if strings.HasPrefix(mediaType, "multipart/") {
 			mr := multipart.NewReader(part, params["boundary"])
-			bytesWritten, err = wrap.handleMultiPart(dst, mr, params["boundary"])
+			err = wrap.handleMultiPart(dst, mr, params["boundary"])
 		} else {
 			if strings.HasPrefix(mediaType, "message/rfc822") {
-				bytesWritten, err = wrap.MailCopy(dst, part)
+				err = wrap.MailCopy(dst, part)
 			} else {
 				// Everything else such as text/plain, image/gif etc pass through
-				bytesWritten, err = handlePlainPart(dst, part)
+				err = handlePlainPart(dst, part)
 			}
 		}
 	}
-	return bytesWritten, err
+	return err
 }
 
 // Transfer through a plain MIME part
-func handlePlainPart(dst io.Writer, src io.Reader) (int, error) {
-	written, err := io.Copy(dst, src) // Passthrough
-	return int(written), err
-}
-
-// Transfer through an html MIME part, wrapping links etc
-func (wrap *Wrapper) handleHTMLPart(dst io.Writer, src io.Reader) (int, error) {
-	return wrap.TrackHTML(dst, src) // Wrap the links and add tracking pixels (if active)
+func handlePlainPart(dst io.Writer, src io.Reader) error {
+	_, err := io.Copy(dst, src) // Passthrough
+	return err
 }
 
 // Transfer through a multipart message, handling recursively as needed
-func (wrap *Wrapper) handleMultiPart(dst io.Writer, mr *multipart.Reader, bound string) (int, error) {
-	bytesWritten := 0
-	var err error
+func (wrap *Wrapper) handleMultiPart(dst io.Writer, mr *multipart.Reader, bound string) error {
 	// Insert the info for multipart
-	bw, err := io.WriteString(dst, "This is a multi-part message in MIME format."+smtpCRLF)
-	bytesWritten += bw
+	_, err := io.WriteString(dst, "This is a multi-part message in MIME format."+smtpCRLF)
 	// Create a part writer with the current boundary and header properties
 	pWrt := multipart.NewWriter(dst)
 	pWrt.SetBoundary(bound)
@@ -372,20 +364,19 @@ func (wrap *Wrapper) handleMultiPart(dst io.Writer, mr *multipart.Reader, bound 
 				err = nil // Usual termination
 				break
 			}
-			return bytesWritten, err // Unexpected error
+			return err // Unexpected error
 		}
 		pWrt2, err := pWrt.CreatePart(p.Header)
 		if err != nil {
-			return bytesWritten, err
+			return err
 		}
 		cType := p.Header.Get("Content-Type")
 		cte := p.Header.Get("Content-Transfer-Encoding")
-		bw, err := wrap.HandleMessagePart(pWrt2, p, cType, cte)
-		bytesWritten += bw
+		err = wrap.HandleMessagePart(pWrt2, p, cType, cte)
 		if err != nil {
-			return bytesWritten, err
+			return err
 		}
 	}
 	pWrt.Close() // Put the boundary in
-	return bytesWritten, err
+	return err
 }

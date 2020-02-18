@@ -238,7 +238,7 @@ func TestWrapSMTP(t *testing.T) {
 	outHostPort := ":5588"
 	verboseOpt := true
 	downstreamDebug := "debug_wrap_smtp_test.log"
-	upstreamDataDebug := "debug_upstream.eml"
+	upstreamDataDebug := "debug_wrap_smtp_test_upstream.eml"
 	wrapURL := "https://track.example.com"
 	insecureSkipVerify := true
 
@@ -336,11 +336,15 @@ func TestWrapSMTP(t *testing.T) {
 	}
 	testEmail := RandomTestEmail()
 	r := strings.NewReader(testEmail)
-	_, err = io.Copy(w, r)
+	bytesWritten, err := io.Copy(w, r)
 	if err != nil {
 		t.Error(err)
 	}
-	err = w.Close()
+	if int(bytesWritten) != len(testEmail) {
+		t.Fatalf("Unexpected DATA copy length %v", bytesWritten)
+	}
+
+	err = w.Close() // Close the data phase
 	if err != nil {
 		t.Error(err)
 	}
@@ -508,10 +512,7 @@ func TestProcessMessageHeadersAndParts(t *testing.T) {
 	}
 	// Handle the message body, grabbing the output into a buffer
 	var outbuf bytes.Buffer
-	bw, err := wrap.HandleMessagePart(&outbuf, message.Body, message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"))
-	if bw < len(testEmail) {
-		t.Errorf("A surprisingly small email, bw=%d", bw)
-	}
+	err = wrap.HandleMessagePart(&outbuf, message.Body, message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"))
 	s := outbuf.String()
 	if len(s) < len(testEmail) {
 		t.Errorf("A surprisingly small email, len=%d", len(s))
@@ -559,11 +560,10 @@ func BenchmarkMailCopy(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		r := strings.NewReader(input) // valid email
 		var buf bytes.Buffer
-		count, err := myWrapper.MailCopy(&buf, r)
+		err := myWrapper.MailCopy(&buf, r)
 		if err != nil {
 			b.Fatal(err)
 		}
 		// buf now contains the "wrapped" email
-		_ = count
 	}
 }
