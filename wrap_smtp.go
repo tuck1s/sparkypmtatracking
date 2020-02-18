@@ -211,7 +211,7 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	} else {
 		w2 = w
 	}
-	bytesWritten, err := MailCopy(w2, r, s.bkd.wrapper) // Pass in the engagement tracking info
+	bytesWritten, err := s.bkd.wrapper.MailCopy(w2, r) // Pass in the engagement tracking info
 	if err != nil {
 		msg := "DATA MailCopy error"
 		s.bkd.loggerAlways(respTwiddle(s), msg, err.Error())
@@ -262,9 +262,9 @@ func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
 
 // MailCopy transfers the mail body from downstream (client) to upstream (server), using the engagement wrapper
 // The writer will be closed by the parent function, no need to close it here.
-func MailCopy(dst io.Writer, src io.Reader, w *Wrapper) (int, error) {
+func (wrap *Wrapper) MailCopy(dst io.Writer, src io.Reader) (int, error) {
 	bytesWritten := 0
-	if !w.Active() {
+	if !wrap.Active() {
 		w64, err := io.Copy(dst, src) // wrapping inactive, just do a copy
 		return int(w64), err
 	}
@@ -273,7 +273,7 @@ func MailCopy(dst io.Writer, src io.Reader, w *Wrapper) (int, error) {
 		return bytesWritten, err
 	}
 
-	err = w.ProcessMessageHeaders(message.Header)
+	err = wrap.ProcessMessageHeaders(message.Header)
 	if err != nil {
 		return bytesWritten, err
 	}
@@ -298,21 +298,14 @@ func MailCopy(dst io.Writer, src io.Reader, w *Wrapper) (int, error) {
 	}
 
 	// Handle the message body
-	bw, err = HandleMessageBody(dst, message, *w)
+	bw, err = wrap.HandleMessagePart(dst, message.Body, message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"))
 	bytesWritten += bw
 	return bytesWritten, err
 }
 
-// HandleMessageBody copies the mail message from msg to dst, with awareness of MIME parts.
-// This is probably a naive implementation when it comes to complex multi-part messages and
-// differing encodings.
-func HandleMessageBody(dst io.Writer, msg *mail.Message, w Wrapper) (int, error) {
-	return handleMessagePart(dst, msg.Body, msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), w)
-}
-
-// handleMessagePart walks the MIME structure, and may be called recursively. The incoming
+// HandleMessagePart walks the MIME structure, and may be called recursively. The incoming
 // content type and cte (content transfer encoding) are passed separately
-func handleMessagePart(dst io.Writer, part io.Reader, cType string, cte string, w Wrapper) (int, error) {
+func (wrap *Wrapper) HandleMessagePart(dst io.Writer, part io.Reader, cType string, cte string) (int, error) {
 	bytesWritten := 0
 	// Check what MIME media type we have
 	mediaType, params, err := mime.ParseMediaType(cType)
@@ -334,14 +327,14 @@ func handleMessagePart(dst io.Writer, part io.Reader, cType string, cte string, 
 				log.Println("Warning: don't know how to handle Content-Type-Encoding", cte)
 			}
 		}
-		bytesWritten, err = handleHTMLPart(dst, part, w)
+		bytesWritten, err = wrap.handleHTMLPart(dst, part)
 	} else {
 		if strings.HasPrefix(mediaType, "multipart/") {
 			mr := multipart.NewReader(part, params["boundary"])
-			bytesWritten, err = handleMultiPart(dst, mr, params["boundary"], w)
+			bytesWritten, err = wrap.handleMultiPart(dst, mr, params["boundary"])
 		} else {
 			if strings.HasPrefix(mediaType, "message/rfc822") {
-				bytesWritten, err = MailCopy(dst, part, &w)
+				bytesWritten, err = wrap.MailCopy(dst, part)
 			} else {
 				// Everything else such as text/plain, image/gif etc pass through
 				bytesWritten, err = handlePlainPart(dst, part)
@@ -358,12 +351,12 @@ func handlePlainPart(dst io.Writer, src io.Reader) (int, error) {
 }
 
 // Transfer through an html MIME part, wrapping links etc
-func handleHTMLPart(dst io.Writer, src io.Reader, w Wrapper) (int, error) {
-	return w.TrackHTML(dst, src) // Wrap the links and add tracking pixels (if active)
+func (wrap *Wrapper) handleHTMLPart(dst io.Writer, src io.Reader) (int, error) {
+	return wrap.TrackHTML(dst, src) // Wrap the links and add tracking pixels (if active)
 }
 
 // Transfer through a multipart message, handling recursively as needed
-func handleMultiPart(dst io.Writer, mr *multipart.Reader, bound string, w Wrapper) (int, error) {
+func (wrap *Wrapper) handleMultiPart(dst io.Writer, mr *multipart.Reader, bound string) (int, error) {
 	bytesWritten := 0
 	var err error
 	// Insert the info for multipart
@@ -387,7 +380,7 @@ func handleMultiPart(dst io.Writer, mr *multipart.Reader, bound string, w Wrappe
 		}
 		cType := p.Header.Get("Content-Type")
 		cte := p.Header.Get("Content-Transfer-Encoding")
-		bw, err := handleMessagePart(pWrt2, p, cType, cte, w)
+		bw, err := wrap.HandleMessagePart(pWrt2, p, cType, cte)
 		bytesWritten += bw
 		if err != nil {
 			return bytesWritten, err

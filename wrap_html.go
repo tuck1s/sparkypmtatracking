@@ -105,7 +105,7 @@ func (wrap *Wrapper) InitialOpenPixel() string {
 	const pixelPrefix = `<div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px` +
 		`;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="`
 	const pixelSuffix = `"/></div>` + "\n"
-	if wrap.URL.String() == "" {
+	if wrap.URL.String() == "" { //TODO: control each feature indidivually
 		return ""
 	}
 	return pixelPrefix + wrap.wrap("i", "") + pixelSuffix
@@ -116,7 +116,7 @@ func (wrap *Wrapper) InitialOpenPixel() string {
 func (wrap *Wrapper) OpenPixel() string {
 	const pixelPrefix = `<img border="0" width="1" height="1" alt="" src="`
 	const pixelSuffix = `">` + "\n"
-	if wrap.URL.String() == "" {
+	if wrap.URL.String() == "" { //TODO: control each feature indidivually
 		return ""
 	}
 	return pixelPrefix + wrap.wrap("o", "") + pixelSuffix
@@ -125,7 +125,7 @@ func (wrap *Wrapper) OpenPixel() string {
 // WrapURL returns the wrapped, encoded version of the URL for engagement tracking.
 // If there are problems, the original unwrapped url is returned.
 func (wrap *Wrapper) WrapURL(url string) string {
-	if wrap.URL.String() == "" {
+	if wrap.URL.String() == "" { //TODO: control each feature indidivually
 		return url
 	}
 	return wrap.wrap("c", url)

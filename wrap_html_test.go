@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
 	"math/rand"
-	"net/mail"
 	"strings"
 	"testing"
 	"time"
@@ -175,7 +173,7 @@ func TestWrapperMethodsfaultyInputs(t *testing.T) {
 	}
 }
 
-func TestNewTracker(t *testing.T) {
+func TestNewWrapper(t *testing.T) {
 	// faulty inputs: malformed URLs are rejected
 	_, err := spmta.NewWrapper("httttps://not a url")
 	if err == nil {
@@ -346,88 +344,5 @@ func TestWrapperActive(t *testing.T) {
 	a = w.Active()
 	if !a {
 		t.Errorf("Active() return value %v, expected true", a)
-	}
-}
-
-func TestProcessMessageHeadersAndBody(t *testing.T) {
-	testEmail := RandomTestEmail()
-	message, err := mail.ReadMessage(strings.NewReader(testEmail))
-	if err != nil {
-		t.Error(err)
-	}
-	// Prepare to wrap
-	trkDomain := RandomBaseURL()
-	w, err := spmta.NewWrapper(trkDomain)
-	if err != nil {
-		t.Error(err)
-	}
-	err = w.ProcessMessageHeaders(message.Header)
-	if err != nil {
-		t.Error(err)
-	}
-	// Check that the message ID header was added
-	msgID := message.Header.Get(spmta.SparkPostMessageIDHeader)
-	if len(msgID) != 20 {
-		t.Errorf("message ID header %s should be 20 chars long", spmta.SparkPostMessageIDHeader)
-	}
-	// Handle the message body, grabbing the output into a buffer
-	var outbuf bytes.Buffer
-	bw, err := spmta.HandleMessageBody(&outbuf, message, *w)
-	if bw < len(testEmail) {
-		t.Errorf("A surprisingly small email, bw=%d", bw)
-	}
-	s := outbuf.String()
-	if len(s) < len(testEmail) {
-		t.Errorf("A surprisingly small email, len=%d", len(s))
-	}
-}
-
-func TestProcessMessageHeadersFaultyInputs(t *testing.T) {
-	var message mail.Message
-	trkDomain := RandomBaseURL()
-	w, err := spmta.NewWrapper(trkDomain)
-	if err != nil {
-		t.Error(err)
-	}
-	// empty message - missing TO address
-	err = w.ProcessMessageHeaders(message.Header)
-	if err.Error() != "mail: header not in message" {
-		t.Error(err)
-	}
-	// Correct number of TO addresses
-	message.Header = mail.Header{
-		"From":    []string{"John Doe <jdoe@machine.example>"},
-		"To":      []string{"Mary Smith <mary@example.net>"},
-		"Subject": []string{"Saying Hello"},
-	}
-	err = w.ProcessMessageHeaders(message.Header)
-	if err != nil {
-		t.Error(err)
-	}
-	// Too many recipient addresses
-	message.Header["Cc"] = []string{"Mary Smith 2<mary2@example.net>"}
-	err = w.ProcessMessageHeaders(message.Header)
-	if err == nil {
-		t.Error(err)
-	}
-}
-
-// This is the most interesting part of email wrapping, from a benchmarking / performance point of view
-func BenchmarkMailCopy(b *testing.B) {
-	wrapURL := "https://testing1234.example.com"
-	myWrapper, err := spmta.NewWrapper(wrapURL)
-	if err != nil {
-		log.Fatal(err)
-	}
-	input := RandomTestEmail()
-	for i := 0; i < b.N; i++ {
-		r := strings.NewReader(input) // valid email
-		var buf bytes.Buffer
-		count, err := spmta.MailCopy(&buf, r, myWrapper)
-		if err != nil {
-			log.Fatal(err)
-		}
-		// buf now contains the "wrapped" email
-		_ = count
 	}
 }
