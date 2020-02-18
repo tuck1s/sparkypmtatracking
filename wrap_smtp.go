@@ -1,9 +1,9 @@
 package sparkypmtatracking
 
 import (
-	"bufio"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"io"
 	"log"
 	"mime"
@@ -233,6 +233,33 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	return code, msg, err
 }
 
+// SparkPostMessageIDHeader is the email header name that carries the unique message ID
+const SparkPostMessageIDHeader = "X-Sp-Message-Id"
+
+// ProcessMessageHeaders reads the message's current headers and updates/inserts any new ones required.
+// The RCPT TO address is grabbed
+func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
+	rcpts, err := h.AddressList("to")
+	if err != nil {
+		return err
+	}
+	ccs, _ := h.AddressList("cc") // ignore "mail:header not in message" error return as it's expected
+	bccs, _ := h.AddressList("bcc")
+
+	if len(rcpts) != 1 || len(ccs) != 0 || len(bccs) != 0 {
+		// Multiple recipients (to, cc, bcc) would require the html to be encoded for EACH recipient and exploded into n messages, which is TODO.
+		return errors.New("This tracking implementation is designed for simple single-recipient messages only, sorry")
+	}
+	// See if we already have a message ID header; otherwise generate and add it
+	uniq := h.Get(SparkPostMessageIDHeader)
+	if uniq == "" {
+		uniq = UniqMessageID()
+		h[SparkPostMessageIDHeader] = []string{uniq} // Add unique value into the message headers for PowerMTA / Signals to process
+	}
+	wrap.SetMessageInfo(uniq, rcpts[0].Address)
+	return nil
+}
+
 // MailCopy transfers the mail body from downstream (client) to upstream (server), using the engagement wrapper
 // The writer will be closed by the parent function, no need to close it here.
 func MailCopy(dst io.Writer, src io.Reader, w *Wrapper) (int, error) {
@@ -241,7 +268,7 @@ func MailCopy(dst io.Writer, src io.Reader, w *Wrapper) (int, error) {
 		w64, err := io.Copy(dst, src) // wrapping inactive, just do a copy
 		return int(w64), err
 	}
-	message, err := mail.ReadMessage(bufio.NewReader(src))
+	message, err := mail.ReadMessage(src)
 	if err != nil {
 		return bytesWritten, err
 	}
@@ -271,7 +298,7 @@ func MailCopy(dst io.Writer, src io.Reader, w *Wrapper) (int, error) {
 	}
 
 	// Handle the message body
-	bw, err = HandleMessageBody(dst, message.Header, message.Body, *w)
+	bw, err = HandleMessageBody(dst, message, *w)
 	bytesWritten += bw
 	return bytesWritten, err
 }
@@ -279,10 +306,8 @@ func MailCopy(dst io.Writer, src io.Reader, w *Wrapper) (int, error) {
 // HandleMessageBody copies the mail message from msg to dst, with awareness of MIME parts.
 // This is probably a naive implementation when it comes to complex multi-part messages and
 // differing encodings.
-func HandleMessageBody(dst io.Writer, msgHeader mail.Header, msgBody io.Reader, w Wrapper) (int, error) {
-	cType := msgHeader.Get("Content-Type")
-	cte := msgHeader.Get("Content-Transfer-Encoding")
-	return handleMessagePart(dst, msgBody, cType, cte, w)
+func HandleMessageBody(dst io.Writer, msg *mail.Message, w Wrapper) (int, error) {
+	return handleMessagePart(dst, msg.Body, msg.Header.Get("Content-Type"), msg.Header.Get("Content-Transfer-Encoding"), w)
 }
 
 // handleMessagePart walks the MIME structure, and may be called recursively. The incoming

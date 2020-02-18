@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/mail"
 	"net/url"
 	"path"
 	"strings"
@@ -75,32 +74,6 @@ func (wrap *Wrapper) SetMessageInfo(msgID string, rcpt string) {
 		wrap.messageID = msgID
 		wrap.rcptTo = rcpt
 	}
-}
-
-// SparkPostMessageIDHeader is the email header name that carries the unique message ID
-const SparkPostMessageIDHeader = "X-Sp-Message-Id"
-
-// ProcessMessageHeaders reads the message's current headers and updates/inserts any new ones required
-func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
-	rcpts, err := h.AddressList("to")
-	if err != nil {
-		return err
-	}
-	ccs, _ := h.AddressList("cc") // ignore "mail:header not in message" error return as it's expected
-	bccs, _ := h.AddressList("bcc")
-
-	if len(rcpts) != 1 || len(ccs) != 0 || len(bccs) != 0 {
-		// Multiple recipients (to, cc, bcc) would require the html to be encoded for EACH recipient and exploded into n messages, which is TODO.
-		return errors.New("This tracking implementation is designed for simple single-recipient messages only, sorry")
-	}
-	// See if we already have a message ID header; otherwise generate and add it
-	uniq := h.Get(SparkPostMessageIDHeader)
-	if uniq == "" {
-		uniq = UniqMessageID()
-		h[SparkPostMessageIDHeader] = []string{uniq} // Add unique value into the message headers for PowerMTA / Signals to process
-	}
-	wrap.SetMessageInfo(uniq, rcpts[0].Address)
-	return nil
 }
 
 // Active returns bool when wrapping/tracking is active.
