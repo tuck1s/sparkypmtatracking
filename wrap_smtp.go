@@ -17,8 +17,6 @@ import (
 	smtpproxy "github.com/tuck1s/go-smtpproxy"
 )
 
-const smtpCRLF = "\r\n"
-
 //-----------------------------------------------------------------------------
 // Backend handlers
 
@@ -41,6 +39,11 @@ func NewBackend(outHostPort string, verbose bool, upstreamDataDebug *os.File, wr
 		insecureSkipVerify: insecureSkipVerify,
 	}
 	return &b
+}
+
+// SetVerbose allows changing logging options on-the-fly
+func (bkd *Backend) SetVerbose(v bool) {
+	bkd.verbose = v
 }
 
 func (bkd *Backend) logger(args ...interface{}) {
@@ -217,7 +220,7 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	if s.bkd.upstreamDataDebug != nil {
 		dbgWritten, err := io.Copy(s.bkd.upstreamDataDebug, bytes.NewReader(buf.Bytes()))
 		if err != nil {
-			s.bkd.loggerAlways(respTwiddle(s), "upstreamDataDebug error", err, ", bytes written =", dbgWritten)
+			s.bkd.loggerAlways("upstreamDataDebug error", err, ", bytes written =", dbgWritten)
 			return 0, "", err
 		}
 	}
@@ -244,8 +247,35 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	return code, msg, err
 }
 
+//-----------------------------------------------------------------------------
+// Engagement Tracking
+
 // SparkPostMessageIDHeader is the email header name that carries the unique message ID
 const SparkPostMessageIDHeader = "X-Sp-Message-Id"
+const smtpCRLF = "\r\n"
+
+// MailCopy transfers the mail body from downstream (client) to upstream (server), using the engagement wrapper
+// The writer should be closed by the parent function
+func (wrap *Wrapper) MailCopy(dst io.Writer, src io.Reader) error {
+	if !wrap.Active() {
+		_, err := io.Copy(dst, src) // wrapping inactive, just do a copy
+		return err
+	}
+	message, err := mail.ReadMessage(src)
+	if err != nil {
+		return err
+	}
+	err = wrap.ProcessMessageHeaders(message.Header)
+	if err != nil {
+		return err
+	}
+	err = writeMessageHeaders(dst, message.Header)
+	if err != nil {
+		return err
+	}
+	// Handle the message body
+	return wrap.HandleMessagePart(dst, message.Body, message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"))
+}
 
 // ProcessMessageHeaders reads the message's current headers and updates/inserts any new ones required.
 // The RCPT TO address is grabbed
@@ -271,23 +301,9 @@ func (wrap *Wrapper) ProcessMessageHeaders(h mail.Header) error {
 	return nil
 }
 
-// MailCopy transfers the mail body from downstream (client) to upstream (server), using the engagement wrapper
-// The writer should be closed by the parent function
-func (wrap *Wrapper) MailCopy(dst io.Writer, src io.Reader) error {
-	if !wrap.Active() {
-		_, err := io.Copy(dst, src) // wrapping inactive, just do a copy
-		return err
-	}
-	message, err := mail.ReadMessage(src)
-	if err != nil {
-		return err
-	}
-	err = wrap.ProcessMessageHeaders(message.Header)
-	if err != nil {
-		return err
-	}
-	// Pass through headers. The m.Header map does not preserve order, but that should not matter.
-	for hdrType, hdrList := range message.Header {
+// write m headers to dst. The m.Header map does not preserve order, but that should not matter.
+func writeMessageHeaders(dst io.Writer, h mail.Header) error {
+	for hdrType, hdrList := range h {
 		for _, hdrVal := range hdrList {
 			hdrLine := hdrType + ": " + hdrVal + smtpCRLF
 			_, err := io.WriteString(dst, hdrLine)
@@ -297,12 +313,8 @@ func (wrap *Wrapper) MailCopy(dst io.Writer, src io.Reader) error {
 		}
 	}
 	// Blank line denotes end of headers
-	_, err = io.WriteString(dst, smtpCRLF)
-	if err != nil {
-		return err
-	}
-	// Handle the message body
-	return wrap.HandleMessagePart(dst, message.Body, message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"))
+	_, err := io.WriteString(dst, smtpCRLF)
+	return err
 }
 
 // HandleMessagePart walks the MIME structure, and may be called recursively. The incoming

@@ -88,29 +88,32 @@ const (
 //      test client <--> wrapper <--> mock SMTP server (Backend, Session)
 // The mock SMTP server returns realistic looking response codes etc
 type Backend struct {
+	mockReply chan string
 }
 
 // A Session is returned after successful login. Here hold information that needs to persist across message phases.
 type Session struct {
 	MockState int
+	bkd       *Backend
 }
 
 // mockSMTPServer should be invoked as a goroutine to allow tests to continue
-func mockSMTPServer(t *testing.T, addr string) {
-	mockbe := Backend{}
+func mockSMTPServer(t *testing.T, addr string, mockReply chan string) {
+	mockbe := Backend{
+		mockReply: mockReply,
+	}
 	s := smtpproxy.NewServer(&mockbe)
 	s.Addr = addr
 	s.ReadTimeout = 60 * time.Second // changeme?
 	s.WriteTimeout = 60 * time.Second
-	err := s.ServeTLS(localhostCert, localhostKey)
-	if err != nil {
-		t.Error(err)
+	if err := s.ServeTLS(localhostCert, localhostKey); err != nil {
+		t.Fatal(err)
 	}
 
 	// Begin serving requests
 	t.Log("Upstream mock SMTP server listening on", s.Addr)
 	if err := s.ListenAndServe(); err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 }
 
@@ -118,6 +121,7 @@ func mockSMTPServer(t *testing.T, addr string) {
 func (bkd *Backend) Init() (smtpproxy.Session, error) {
 	var s Session
 	s.MockState = Init
+	s.bkd = bkd
 	return &s, nil
 }
 
@@ -204,10 +208,17 @@ func (s *Session) DataCommand() (io.WriteCloser, int, string, error) {
 	return myWriteCloser{Writer: ioutil.Discard}, 354, `3.0.0 mock says continue.  finished with "\r\n.\r\n"`, nil
 }
 
-// Data body (dot delimited) pass upstream, returning the usual responses
+// Data body (dot delimited) pass upstream, returning the usual responses.
+// Also emit a copy back in the test harness response channel, if present
 func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
-	io.Copy(w, r)
-	return 250, "2.0.0 OK mock got your dot", nil
+	var buf bytes.Buffer
+	_, err := io.Copy(&buf, r)
+	resp := buf.String()             // get the whole received mail body as a string
+	_, err = io.WriteString(w, resp) // copy through to the writer
+	if s.bkd.mockReply != nil {
+		s.bkd.mockReply <- resp
+	}
+	return 250, "2.0.0 OK mock got your dot", err
 }
 
 //-----------------------------------------------------------------------------
@@ -216,7 +227,7 @@ func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 func startProxy(t *testing.T, s *smtpproxy.Server) {
 	t.Log("Proxy (unit under test) listening on", s.Addr)
 	if err := s.ListenAndServe(); err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 }
 
@@ -231,6 +242,9 @@ func tlsClientConfig(cert []byte, privkey []byte) (*tls.Config, error) {
 	return config, nil
 }
 
+// receive results back from the mock server
+
+//-----------------------------------------------------------------------------
 // wrap_smtp tests
 func TestWrapSMTP(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())
@@ -279,8 +293,9 @@ func TestWrapSMTP(t *testing.T) {
 		s.Debug = dbgFile
 	}
 
-	// start the upstream mock SMTP server
-	go mockSMTPServer(t, outHostPort)
+	// start the upstream mock SMTP server, which will reply in the channel
+	mockReply := make(chan string, 1)
+	go mockSMTPServer(t, outHostPort, mockReply)
 
 	// start the proxy
 	go startProxy(t, s)
@@ -321,32 +336,52 @@ func TestWrapSMTP(t *testing.T) {
 		t.Error(err)
 	}
 
-	// Submit an email .. MAIL FROM, RCPT TO, DATA ... QUIT
-	err = c.Mail(RandomRecipient())
-	if err != nil {
-		t.Error(err)
-	}
-	err = c.Rcpt(RandomRecipient())
-	if err != nil {
-		t.Error(err)
-	}
-	w, err := c.Data()
-	if err != nil {
-		t.Error(err)
-	}
-	testEmail := RandomTestEmail()
-	r := strings.NewReader(testEmail)
-	bytesWritten, err := io.Copy(w, r)
-	if err != nil {
-		t.Error(err)
-	}
-	if int(bytesWritten) != len(testEmail) {
-		t.Fatalf("Unexpected DATA copy length %v", bytesWritten)
-	}
+	n := 100 // Send multiple test mails
+	for i := 0; i < n; i++ {
+		// Submit an email .. MAIL FROM, RCPT TO, DATA ...
+		err = c.Mail(RandomRecipient())
+		if err != nil {
+			t.Error(err)
+		}
+		err = c.Rcpt(RandomRecipient())
+		if err != nil {
+			t.Error(err)
+		}
+		w, err := c.Data()
+		if err != nil {
+			t.Error(err)
+		}
+		testEmail := RandomTestEmail()
+		r := strings.NewReader(testEmail)
+		bytesWritten, err := io.Copy(w, r)
+		if err != nil {
+			t.Error(err)
+		}
+		if int(bytesWritten) != len(testEmail) {
+			t.Fatalf("Unexpected DATA copy length %v", bytesWritten)
+		}
 
-	err = w.Close() // Close the data phase
-	if err != nil {
-		t.Error(err)
+		err = w.Close() // Close the data phase
+		if err != nil {
+			t.Error(err)
+		}
+
+		// Collect the response from the mock server
+		mockr := <-mockReply
+
+		// buf now contains the "wrapped" email
+		outputMail, err := mail.ReadMessage(strings.NewReader(mockr))
+		if err != nil {
+			t.Error(err)
+		}
+		inputMail, err := mail.ReadMessage(strings.NewReader(testEmail))
+		if err != nil {
+			t.Error(err)
+		}
+		compareInOutMail(t, inputMail, outputMail)
+
+		// Flip the logging to non-verbose after the first pass, to exercise that path
+		be.SetVerbose(false)
 	}
 
 	// Provoke unknown command
@@ -372,6 +407,34 @@ func TestWrapSMTP(t *testing.T) {
 	err = c.Quit()
 	if err != nil {
 		t.Error(err)
+	}
+}
+
+func compareInOutMail(t *testing.T, inputMail *mail.Message, outputMail *mail.Message) {
+	// check the headers match
+	for hdrType, _ := range inputMail.Header {
+		in := inputMail.Header.Get(hdrType)
+		out := outputMail.Header.Get(hdrType)
+		if in != out {
+			t.Errorf("Header %v mismatch", hdrType)
+		}
+	}
+	// output mail should additionally have a message ID
+	msgID := outputMail.Header.Get(spmta.SparkPostMessageIDHeader)
+	if msgID == "" {
+		t.Errorf("outputMail missing message ID header %v", spmta.SparkPostMessageIDHeader)
+	}
+	// Compare body lengths
+	inBody, err := ioutil.ReadAll(inputMail.Body)
+	if err != nil {
+		t.Error(err)
+	}
+	outBody, err := ioutil.ReadAll(outputMail.Body)
+	if err != nil {
+		t.Error(err)
+	}
+	if len(inBody) > len(outBody) {
+		t.Errorf("output mail body short \n%v\n", string(outBody))
 	}
 }
 
@@ -456,32 +519,7 @@ func TestWrapSMTPFaultyInputs(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	// check the headers match
-	for hdrType, _ := range inputMail.Header {
-		in := inputMail.Header.Get(hdrType)
-		out := outputMail.Header.Get(hdrType)
-		if in != out {
-			t.Errorf("Header %v mismatch", hdrType)
-		}
-	}
-	// output mail should additionally have a message ID
-	msgID := outputMail.Header.Get(spmta.SparkPostMessageIDHeader)
-	if msgID == "" {
-		t.Errorf("outputMail missing message ID header %v", spmta.SparkPostMessageIDHeader)
-	}
-	// Compare body lengths
-	inBody, err := ioutil.ReadAll(inputMail.Body)
-	if err != nil {
-		t.Error(err)
-	}
-	outBody, err := ioutil.ReadAll(outputMail.Body)
-	if err != nil {
-		t.Error(err)
-	}
-	if len(inBody) > len(outBody) {
-		t.Errorf("output mail body short \n%v\n", string(outBody))
-	}
-
+	compareInOutMail(t, inputMail, outputMail)
 	// workaround these variables being "unused"
 	_ = caps
 	_ = code
