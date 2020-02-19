@@ -15,11 +15,11 @@ func usageNQuit() {
 
 func main() {
 	encodeCmd := flag.NewFlagSet("encode", flag.ExitOnError)
-	encodeTrackingURL := encodeCmd.String("tracking_url", "http://localhost:8888", "URL of your tracking service endpoint")
 	encodeMessageID := encodeCmd.String("message_id", "0000123456789abcdef0", "message_id")
 	encodeRcptTo := encodeCmd.String("rcpt_to", "any@example.com", "rcpt_to")
 	encodeAction := encodeCmd.String("action", "open", "[open|initial_open|click]")
 	encodeTargetLinkURL := encodeCmd.String("target_link_url", "https://example.com", "URL of your target link")
+	encodeTrackingURL := encodeCmd.String("tracking_url", "http://localhost:8888", "URL of your tracking service endpoint")
 	encodeCmd.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(), "encode\n")
 		encodeCmd.PrintDefaults()
@@ -45,7 +45,7 @@ func main() {
 		if err := encodeCmd.Parse(os.Args[2:]); err != nil {
 			usageNQuit()
 		}
-		link, err := spmta.EncodeLink(*encodeTrackingURL, *encodeAction, *encodeMessageID, *encodeRcptTo, *encodeTargetLinkURL)
+		link, err := spmta.EncodeLink(*encodeTrackingURL, *encodeAction, *encodeMessageID, *encodeRcptTo, *encodeTargetLinkURL, true, true, true)
 		if err != nil {
 			fmt.Println(err)
 			usageNQuit()

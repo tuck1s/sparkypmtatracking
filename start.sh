@@ -11,7 +11,8 @@ sudo ./wrapper -in_hostport :587 -out_hostport :5587 \
  -privkeyfile trymsys.net.key -certfile trymsys.net.crt \
  -engagement_url http://pmta.signalsdemo.trymsys.net \
  -logfile wrapper.log \
- -insecure_skip_verify &
+ -insecure_skip_verify \
+ -track_open -track_initial_open -track_click &
 
  # -verbose \
  # -downstream_debug debug_downstream.log -upstream_data_debug debug_upstream.eml \

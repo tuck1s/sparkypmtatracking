@@ -268,7 +268,7 @@ func TestWrapSMTP(t *testing.T) {
 		defer upstreamDebugFile.Close()
 	}
 
-	myWrapper, err := spmta.NewWrapper(wrapURL)
+	myWrapper, err := spmta.NewWrapper(wrapURL, true, true, true)
 	if err != nil && !strings.Contains(err.Error(), "empty url") {
 		t.Error(err)
 	}
@@ -325,7 +325,7 @@ func TestWrapSMTP(t *testing.T) {
 		}
 		err = c.StartTLS(cfg)
 		if err != nil {
-			t.Error(err)
+			t.Fatal(err)
 		}
 	}
 
@@ -453,7 +453,7 @@ func TestWrapSMTPFaultyInputs(t *testing.T) {
 	insecureSkipVerify := true
 	var upstreamDebugFile *os.File // placeholder
 
-	myWrapper, err := spmta.NewWrapper(wrapURL)
+	myWrapper, err := spmta.NewWrapper(wrapURL, true, true, true)
 	if err != nil && !strings.Contains(err.Error(), "empty url") {
 		t.Error(err)
 	}
@@ -501,30 +501,46 @@ func TestWrapSMTPFaultyInputs(t *testing.T) {
 		t.Errorf("This test should have returned a non-nil error code")
 	}
 
+	// Valid input mail, but cannot write to the destination stream
 	s = makeFakeSession(t, be, dummyServer)
-	input := RandomTestEmail()
-	r = strings.NewReader(input) // valid email
+	testEmail := RandomTestEmail()
+	r = strings.NewReader(testEmail)
+	code, msg, err = s.Data(r, brokenWriteCloser(t))
+	if err == nil {
+		t.Errorf("This test should have returned a non-nil error code")
+	}
 
-	var buf bytes.Buffer
-	code, msg, err = s.Data(r, myWriteCloser{Writer: &buf})
+	// Valid input mail and output stream, but broken upstream debug stream
+	s = makeFakeSession(t, be, dummyServer)
+	r = strings.NewReader(testEmail)
+	// Set up parameters that the backend will use, and initialise the proxy server parameters
+	be2 := spmta.NewBackend(outHostPort, verboseOpt, alreadyClosedFile(t), myWrapper, insecureSkipVerify)
+	s = makeFakeSession(t, be2, dummyServer)
+	code, msg, err = s.Data(r, myWriteCloser{Writer: ioutil.Discard})
+	if err == nil {
+		t.Errorf("This test should have returned a non-nil error code")
+	}
+
+	_, _, _, _ = caps, code, msg, w // workaround these variables being "unused" yet useful for debugging the test
+}
+
+// Deliberately return a WriteCloser that should break
+func brokenWriteCloser(t *testing.T) io.WriteCloser {
+	f := alreadyClosedFile(t)
+	return myWriteCloser{Writer: f}
+}
+
+// Deliberately return an unusable file handle
+func alreadyClosedFile(t *testing.T) *os.File {
+	f, err := ioutil.TempFile(".", "tmp")
 	if err != nil {
 		t.Error(err)
 	}
-	// buf now contains the "wrapped" email
-	outputMail, err := mail.ReadMessage(&buf)
+	err = f.Close()
 	if err != nil {
 		t.Error(err)
 	}
-	inputMail, err := mail.ReadMessage(strings.NewReader(input))
-	if err != nil {
-		t.Error(err)
-	}
-	compareInOutMail(t, inputMail, outputMail)
-	// workaround these variables being "unused"
-	_ = caps
-	_ = code
-	_ = msg
-	_ = w
+	return f
 }
 
 func TestProcessMessageHeadersAndParts(t *testing.T) {
@@ -535,7 +551,7 @@ func TestProcessMessageHeadersAndParts(t *testing.T) {
 	}
 	// Prepare to wrap
 	trkDomain := RandomBaseURL()
-	wrap, err := spmta.NewWrapper(trkDomain)
+	wrap, err := spmta.NewWrapper(trkDomain, true, true, true)
 	if err != nil {
 		t.Error(err)
 	}
@@ -560,7 +576,7 @@ func TestProcessMessageHeadersAndParts(t *testing.T) {
 func TestProcessMessageHeadersFaultyInputs(t *testing.T) {
 	var message mail.Message
 	trkDomain := RandomBaseURL()
-	w, err := spmta.NewWrapper(trkDomain)
+	w, err := spmta.NewWrapper(trkDomain, true, true, true)
 	if err != nil {
 		t.Error(err)
 	}
@@ -590,7 +606,7 @@ func TestProcessMessageHeadersFaultyInputs(t *testing.T) {
 // This is the most interesting part of email wrapping, from a benchmarking / performance point of view
 func BenchmarkMailCopy(b *testing.B) {
 	wrapURL := "https://testing1234.example.com"
-	myWrapper, err := spmta.NewWrapper(wrapURL)
+	myWrapper, err := spmta.NewWrapper(wrapURL, true, true, true) // all the tracking options on
 	if err != nil {
 		b.Fatal(err)
 	}

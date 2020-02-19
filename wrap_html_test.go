@@ -59,17 +59,25 @@ func expectedHTMLoutput(htmlTemplate, URL1, URL2 string, w *spmta.Wrapper) strin
 }
 
 func testHTMLWrapping(htmlTemplate string, trkDomain string, URL1 string, URL2 string, msgID string, recip string, t *testing.T) {
-	w, err := spmta.NewWrapper(trkDomain)
-	if err != nil {
-		t.Errorf("Error returned from NewWrapper: %v", err)
+	// work through all combinations of tracking flags
+	var boolz = []bool{false, true}
+	for _, trackOpen := range boolz {
+		for _, trackInitialOpen := range boolz {
+			for _, trackLink := range boolz {
+				w, err := spmta.NewWrapper(trkDomain, trackOpen, trackInitialOpen, trackLink)
+				if err != nil {
+					t.Errorf("Error returned from NewWrapper: %v", err)
+				}
+				if w.URL.String() != trkDomain {
+					t.Errorf("Tracking domain set wrongly to %s", w.URL.String())
+				}
+				w.SetMessageInfo(msgID, recip)
+				testHTML := testHTML(htmlTemplate, URL1, URL2)
+				expectedHTMLoutput := expectedHTMLoutput(htmlTemplate, URL1, URL2, w)
+				ioHarness(testHTML, expectedHTMLoutput, w.TrackHTML, t) // run the test
+			}
+		}
 	}
-	if w.URL.String() != trkDomain {
-		t.Errorf("Tracking domain set wrongly to %s", w.URL.String())
-	}
-	w.SetMessageInfo(msgID, recip)
-	testHTML := testHTML(htmlTemplate, URL1, URL2)
-	expectedHTMLoutput := expectedHTMLoutput(htmlTemplate, URL1, URL2, w)
-	ioHarness(testHTML, expectedHTMLoutput, w.TrackHTML, t) // run the test
 }
 
 func RandomWord() string {
@@ -175,12 +183,12 @@ func TestWrapperMethodsfaultyInputs(t *testing.T) {
 
 func TestNewWrapper(t *testing.T) {
 	// faulty inputs: malformed URLs are rejected
-	_, err := spmta.NewWrapper("httttps://not a url")
+	_, err := spmta.NewWrapper("httttps://not a url", true, true, true)
 	if err == nil {
 		t.Errorf("Faulty input test should have failed")
 	}
 
-	_, err = spmta.NewWrapper("https://example.com/?pet=dog")
+	_, err = spmta.NewWrapper("https://example.com/?pet=dog", true, true, true)
 	if err == nil {
 		t.Errorf("Faulty input test should have failed")
 	}
@@ -218,7 +226,7 @@ func TestActionToType(t *testing.T) {
 func TestTrackHTMLFaultyInputs(t *testing.T) {
 	msgID := spmta.UniqMessageID()
 	trkDomain := RandomBaseURL()
-	myTracker, err := spmta.NewWrapper(trkDomain)
+	myTracker, err := spmta.NewWrapper(trkDomain, true, true, true)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}
@@ -257,7 +265,7 @@ func testED(eType, action, link string, t *testing.T) {
 	trkDomain := RandomBaseURL()
 	msgID := spmta.UniqMessageID()
 	recip := RandomRecipient()
-	url, err := spmta.EncodeLink(trkDomain, eType, msgID, recip, link)
+	url, err := spmta.EncodeLink(trkDomain, eType, msgID, recip, link, true, true, true)
 	if err != nil {
 		t.Error(err)
 	}
@@ -299,7 +307,7 @@ func TestEncodeDecodeLinkFaultyInputs(t *testing.T) {
 		{"Can't have query parameters", "https://example.com?pets=dog", "click"}, // got query parameter
 	}
 	for _, e := range eList {
-		url, err := spmta.EncodeLink(e[1], e[2], msgID, recip, link)
+		url, err := spmta.EncodeLink(e[1], e[2], msgID, recip, link, true, true, true)
 		if !strings.Contains(err.Error(), e[0]) {
 			t.Error(err)
 		}
@@ -337,7 +345,7 @@ func TestWrapperActive(t *testing.T) {
 	}
 
 	trkDomain := RandomBaseURL()
-	w, err := spmta.NewWrapper(trkDomain)
+	w, err := spmta.NewWrapper(trkDomain, true, true, true)
 	if err != nil {
 		t.Errorf("Error returned from NewWrapper: %v", err)
 	}

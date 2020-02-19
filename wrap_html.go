@@ -50,13 +50,16 @@ type WrapperData struct {
 
 // Wrapper carries the per-message information as each message is processed
 type Wrapper struct {
-	URL       url.URL
-	messageID string // This info is set up per message
-	rcptTo    string // and per recipient
+	URL              url.URL
+	trackOpen        bool
+	trackInitialOpen bool
+	trackLink        bool
+	messageID        string // This info is set up per message
+	rcptTo           string // and per recipient
 }
 
 // NewWrapper returns a tracker with the persistent info set up from params
-func NewWrapper(URL string) (*Wrapper, error) {
+func NewWrapper(URL string, trackOpen, trackInitialOpen, trackLink bool) (*Wrapper, error) {
 	u, err := url.ParseRequestURI(URL)
 	if err != nil {
 		return nil, err
@@ -64,7 +67,12 @@ func NewWrapper(URL string) (*Wrapper, error) {
 	if u.RawQuery != "" {
 		return nil, errors.New("Can't have query parameters in the tracking URL")
 	}
-	trk := Wrapper{URL: *u}
+	trk := Wrapper{
+		URL:              *u,
+		trackOpen:        trackOpen,
+		trackInitialOpen: trackInitialOpen,
+		trackLink:        trackLink,
+	}
 	return &trk, nil
 }
 
@@ -82,8 +90,8 @@ func (wrap *Wrapper) Active() bool {
 }
 
 // EncodeLink - convenience function
-func EncodeLink(encodeTrackingURL, encodeAction, encodeMessageID, encodeRcptTo, encodeTargetLinkURL string) (string, error) {
-	w, err := NewWrapper(encodeTrackingURL)
+func EncodeLink(encodeTrackingURL, encodeAction, encodeMessageID, encodeRcptTo, encodeTargetLinkURL string, trackOpen, trackInitialOpen, trackLink bool) (string, error) {
+	w, err := NewWrapper(encodeTrackingURL, trackOpen, trackInitialOpen, trackLink)
 	if err != nil {
 		return "", err
 	}
@@ -105,10 +113,10 @@ func (wrap *Wrapper) InitialOpenPixel() string {
 	const pixelPrefix = `<div style="color:transparent;visibility:hidden;opacity:0;font-size:0px;border:0;max-height:1px;width:1px;margin:0px;padding:0px` +
 		`;border-width:0px!important;display:none!important;line-height:0px!important;"><img border="0" width="1" height="1" src="`
 	const pixelSuffix = `"/></div>` + "\n"
-	if wrap.URL.String() == "" { //TODO: control each feature indidivually
-		return ""
+	if wrap.URL.String() != "" && wrap.trackInitialOpen {
+		return pixelPrefix + wrap.wrap("i", "") + pixelSuffix
 	}
-	return pixelPrefix + wrap.wrap("i", "") + pixelSuffix
+	return ""
 }
 
 // OpenPixel returns an html fragment with pixel for bottom open tracking.
@@ -116,19 +124,19 @@ func (wrap *Wrapper) InitialOpenPixel() string {
 func (wrap *Wrapper) OpenPixel() string {
 	const pixelPrefix = `<img border="0" width="1" height="1" alt="" src="`
 	const pixelSuffix = `">` + "\n"
-	if wrap.URL.String() == "" { //TODO: control each feature indidivually
-		return ""
+	if wrap.URL.String() != "" && wrap.trackOpen {
+		return pixelPrefix + wrap.wrap("o", "") + pixelSuffix
 	}
-	return pixelPrefix + wrap.wrap("o", "") + pixelSuffix
+	return ""
 }
 
 // WrapURL returns the wrapped, encoded version of the URL for engagement tracking.
 // If there are problems, the original unwrapped url is returned.
 func (wrap *Wrapper) WrapURL(url string) string {
-	if wrap.URL.String() == "" { //TODO: control each feature indidivually
-		return url
+	if wrap.URL.String() != "" && wrap.trackLink {
+		return wrap.wrap("c", url)
 	}
-	return wrap.wrap("c", url)
+	return url
 }
 
 func (wrap *Wrapper) wrap(action string, targetlink string) string {

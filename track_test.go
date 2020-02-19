@@ -56,20 +56,23 @@ func TestTrackingServer(t *testing.T) {
 
 	// Check responses
 	type actionExpectedResponse struct {
-		Act  string
-		resp int
-		body []byte
+		Act              string
+		resp             int
+		body             []byte
+		trackOpen        bool
+		trackInitialOpen bool
+		trackLink        bool
 	}
 	arList := []actionExpectedResponse{
-		{"click", http.StatusFound, empty},
-		{"open", http.StatusOK, spmta.TransparentGif},
-		{"initial_open", http.StatusOK, spmta.TransparentGif},
+		{"click", http.StatusFound, empty, true, true, true},
+		{"open", http.StatusOK, spmta.TransparentGif, true, true, true},
+		{"initial_open", http.StatusOK, spmta.TransparentGif, true, true, true},
 	}
 	for _, ar := range arList {
 		trkDomain := RandomBaseURL()
 		msgID := spmta.UniqMessageID()
 		recip := RandomRecipient()
-		url, err := spmta.EncodeLink(trkDomain, ar.Act, msgID, recip, RandomURLWithPath())
+		url, err := spmta.EncodeLink(trkDomain, ar.Act, msgID, recip, RandomURLWithPath(), ar.trackOpen, ar.trackInitialOpen, ar.trackLink)
 		if err != nil {
 			t.Error(err)
 		}
@@ -109,7 +112,7 @@ func TestTrackingServerFaultyInputs(t *testing.T) {
 	recip := RandomRecipient()
 
 	// click
-	url, err := spmta.EncodeLink(trkDomain, "click", msgID, recip, RandomURLWithPath())
+	url, err := spmta.EncodeLink(trkDomain, "click", msgID, recip, RandomURLWithPath(), true, true, true)
 	if err != nil {
 		t.Error(err)
 	}
