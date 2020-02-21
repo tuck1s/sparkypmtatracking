@@ -2,6 +2,7 @@ package sparkypmtatracking_test
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"math/rand"
@@ -9,8 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	spmta "github.com/tuck1s/sparkyPMTATracking"
 )
+
+//-----------------------------------------------------------------------------
+// test email & html templates
 
 // string params: initial_pixel, testTargetURL, end_pixel
 const testHTMLTemplate1 = `<!DOCTYPE html>
@@ -32,6 +37,135 @@ const testHTMLTemplate1 = `<!DOCTYPE html>
 
 const testTextTemplate1 = `Spicy jalapeno bacon ipsum dolor amet pariatur mollit fatback venison, cillum occaecat quis ut labore pork belly culpa ea bacon in spare ribs.`
 
+// string params: to, from, bound, bound, testTextTemplate1, bound, testHTML, bound
+const testEmailTemplate = `To: %s
+From: %s
+Subject: Fresh, tasty Avocados delivered straight to your door!
+Content-Type: multipart/alternative; boundary="%s"
+MIME-Version: 1.0
+
+--%s
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="UTF-8"
+
+%s
+
+--%s
+Content-Transfer-Encoding: 8bit
+Content-Type: text/html; charset="UTF-8"
+
+%s
+--%s--
+`
+
+func testHTML(htmlTemplate, URL1, URL2 string) string {
+	return fmt.Sprintf(htmlTemplate, "", URL1, URL2, "")
+}
+
+// RandomTestEmail creates HTML body contents, and places inside an email
+func RandomTestEmail() string {
+	URL1 := RandomURLWithPath()
+	URL2 := RandomURLWithPath()
+	testHTML := testHTML(testHTMLTemplate1, URL1, URL2)
+	to := RandomRecipient()
+	from := RandomRecipient()
+	u := uuid.New() // randomise boundary marker
+	bound := fmt.Sprintf("%0x", u[:8])
+	return fmt.Sprintf(testEmailTemplate, to, from, bound, bound, testTextTemplate1, bound, testHTML, bound)
+}
+
+// string params: to, from, bound, bound, bound, base64body, bound
+const base64HTMLEmailTemplate = `To: %s
+From: %s
+Subject: A base64 encoded html email
+Content-Type: multipart/alternative; boundary="%s"
+MIME-Version: 1.0
+
+--%s
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="UTF-8"
+
+Short plaintext
+
+--%s
+Content-Transfer-Encoding: base64
+Content-Type: text/html; charset="utf-8"
+
+%s
+--%s--
+`
+
+// Base64HTMLTestEmail creates HTML body contents, and places inside an email
+func Base64HTMLTestEmail() string {
+	URL1 := RandomURLWithPath()
+	URL2 := RandomURLWithPath()
+	testHTML := testHTML(testHTMLTemplate1, URL1, URL2)
+	base64Body := base64.StdEncoding.EncodeToString([]byte(testHTML))
+	to := RandomRecipient()
+	from := RandomRecipient()
+	u := uuid.New() // randomise boundary marker
+	bound := fmt.Sprintf("%0x", u[:8])
+	return fmt.Sprintf(base64HTMLEmailTemplate, to, from, bound, bound, bound, base64Body, bound)
+}
+
+const nestedEmailRFC822Template = `To: %s
+From: %s
+Subject: An email carrying a nested email
+Content-Type: multipart/mixed; boundary="%s"
+MIME-Version: 1.0
+
+This is the original MIME multi-part message
+--%s
+Content-Transfer-Encoding: 7bit
+Content-Type: text/plain; charset="UTF-8"
+
+%s
+--%s
+Content-Type: image/gif; name="map_of_Argentina.gif"
+Content-Transfer-Encoding: base64
+Content-Disposition: in1ine; fi1ename="map_of_Argentina.gif"
+
+R0lGODlhJQA1AKIAAP/////78P/omn19fQAAAAAAAAAAAAAAACwAAAAAJQA1AAAD7Qi63P5w
+wEmjBCLrnQnhYCgM1wh+pkgqqeC9XrutmBm7hAK3tP31gFcAiFKVQrGFR6kscnonTe7FAAad
+GugmRu3CmiBt57fsVq3Y0VFKnpYdxPC6M7Ze4crnnHum4oN6LFJ1bn5NXTN7OF5fQkN5WYow
+BEN2dkGQGWJtSzqGTICJgnQuTJN/WJsojad9qXMuhIWdjXKjY4tenjo6tjVssk2gaWq3uGNX
+U6ZGxseyk8SasGw3J9GRzdTQky1iHNvcPNNI4TLeKdfMvy0vMqLrItvuxfDW8ubjueDtJufz
+7itICBxISKDBgwgTKjyYAAA7
+--%s
+Content-Transfer-Encoding: 8bit
+Content-Type: message/rfc822
+Content-Disposition: inline
+
+%s
+--%s
+`
+
+// NestedEmailRFC822 creates a multipart message, which contains an attachment in base64, and another message!
+func NestedEmailRFC822() string {
+	innerMsg := RandomTestEmail()
+	to := RandomRecipient()
+	from := RandomRecipient()
+	bound := "boundybound" // fmt.Sprintf("%0x", uuid.New()) // randomise boundary marker
+	testText := "this is some plain text"
+	return fmt.Sprintf(nestedEmailRFC822Template, to, from, bound, bound, testText, bound, bound, innerMsg, bound)
+}
+
+const plainEmailTemplate = `To: %s
+From: %s
+Subject: A plaintext email
+MIME-Version: 1.0
+
+short plaintext
+`
+
+func PlainEmail() string {
+	to := RandomRecipient()
+	from := RandomRecipient()
+	return fmt.Sprintf(plainEmailTemplate, to, from)
+}
+
+//-----------------------------------------------------------------------------
+
 // ioHarness takes input as a string, expected output as a string,
 // calls the "io.Copy-like" function f (the function under test), and compares the returned output with expected
 func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error), t *testing.T) {
@@ -48,10 +182,6 @@ func ioHarness(in, expected string, f func(io.Writer, io.Reader) (n int, e error
 	if n != len(expected) {
 		t.Errorf("Count of copied bytes differs: got %d, expected %d\n", n, len(expected))
 	}
-}
-
-func testHTML(htmlTemplate, URL1, URL2 string) string {
-	return fmt.Sprintf(htmlTemplate, "", URL1, URL2, "")
 }
 
 func expectedHTMLoutput(htmlTemplate, URL1, URL2 string, w *spmta.Wrapper) string {
@@ -118,35 +248,8 @@ func RandomRecipient() string {
 	return RandomWord() + "@" + RandomWord() + "." + RandomWord()
 }
 
-const testEmailTemplate = `To: %s
-Content-Type: multipart/alternative; boundary="D7F------------D7FD5A0B8AB9C65CCDBFA872"
-MIME-Version: 1.0
-Subject: Fresh, tasty Avocados delivered straight to your door!
-From: %s
-
---D7F------------D7FD5A0B8AB9C65CCDBFA872
-Content-Transfer-Encoding: 7bit
-Content-Type: text/plain; charset="UTF-8"
-
-%s
-
---D7F------------D7FD5A0B8AB9C65CCDBFA872
-Content-Transfer-Encoding: 8bit
-Content-Type: text/html; charset="UTF-8"
-
-%s
---D7F------------D7FD5A0B8AB9C65CCDBFA872
-`
-
-func RandomTestEmail() string {
-	// create HTML body contents, then place that inside an email
-	URL1 := RandomURLWithPath()
-	URL2 := RandomURLWithPath()
-	testHTML := testHTML(testHTMLTemplate1, URL1, URL2)
-	to := RandomRecipient()
-	from := RandomRecipient()
-	return fmt.Sprintf(testEmailTemplate, to, from, testTextTemplate1, testHTML)
-}
+//-----------------------------------------------------------------------------
+// Tests
 
 func TestTrackHTML(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())

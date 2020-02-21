@@ -30,12 +30,12 @@ type Backend struct {
 }
 
 // NewBackend init function
-func NewBackend(outHostPort string, verbose bool, upstreamDataDebug *os.File, wrapper *Wrapper, insecureSkipVerify bool) *Backend {
+func NewBackend(outHostPort string, verbose bool, upstreamDataDebug *os.File, wrap *Wrapper, insecureSkipVerify bool) *Backend {
 	b := Backend{
 		outHostPort:        outHostPort,
 		verbose:            verbose,
 		upstreamDataDebug:  upstreamDataDebug,
-		wrapper:            wrapper,
+		wrapper:            wrap,
 		insecureSkipVerify: insecureSkipVerify,
 	}
 	return &b
@@ -44,6 +44,11 @@ func NewBackend(outHostPort string, verbose bool, upstreamDataDebug *os.File, wr
 // SetVerbose allows changing logging options on-the-fly
 func (bkd *Backend) SetVerbose(v bool) {
 	bkd.verbose = v
+}
+
+// SetWrapper Verbose allows changing on-the-fly
+func (bkd *Backend) SetWrapper(wrap *Wrapper) {
+	bkd.wrapper = wrap
 }
 
 func (bkd *Backend) logger(args ...interface{}) {
@@ -345,12 +350,8 @@ func (wrap *Wrapper) HandleMessagePart(dst io.Writer, part io.Reader, cType stri
 			mr := multipart.NewReader(part, params["boundary"])
 			err = wrap.handleMultiPart(dst, mr, params["boundary"])
 		} else {
-			if strings.HasPrefix(mediaType, "message/rfc822") {
-				err = wrap.MailCopy(dst, part)
-			} else {
-				// Everything else such as text/plain, image/gif etc pass through
-				err = handlePlainPart(dst, part)
-			}
+			// Everything else such as text/plain, image/gif etc pass through
+			err = handlePlainPart(dst, part)
 		}
 	}
 	return err
@@ -362,11 +363,9 @@ func handlePlainPart(dst io.Writer, src io.Reader) error {
 	return err
 }
 
-// Transfer through a multipart message, handling recursively as needed
+// Transfer through a multipart message, handling recursively as needed.
+// 	Based on https://golang.org/pkg/mime/multipart/#example_NewReader
 func (wrap *Wrapper) handleMultiPart(dst io.Writer, mr *multipart.Reader, bound string) error {
-	// Insert the info for multipart
-	_, err := io.WriteString(dst, "This is a multi-part message in MIME format."+smtpCRLF)
-	// Create a part writer with the current boundary and header properties
 	pWrt := multipart.NewWriter(dst)
 	pWrt.SetBoundary(bound)
 	for {
@@ -390,5 +389,5 @@ func (wrap *Wrapper) handleMultiPart(dst io.Writer, mr *multipart.Reader, bound 
 		}
 	}
 	pWrt.Close() // Put the boundary in
-	return err
+	return nil
 }

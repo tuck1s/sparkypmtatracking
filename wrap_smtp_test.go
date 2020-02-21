@@ -7,6 +7,8 @@ import (
 	"io"
 	"io/ioutil"
 	"math/rand"
+	"mime"
+	"mime/multipart"
 	"net/mail"
 	"net/smtp"
 	"net/textproto"
@@ -88,7 +90,7 @@ const (
 //      test client <--> wrapper <--> mock SMTP server (Backend, Session)
 // The mock SMTP server returns realistic looking response codes etc
 type Backend struct {
-	mockReply chan string
+	mockReply chan []byte
 }
 
 // A Session is returned after successful login. Here hold information that needs to persist across message phases.
@@ -98,7 +100,7 @@ type Session struct {
 }
 
 // mockSMTPServer should be invoked as a goroutine to allow tests to continue
-func mockSMTPServer(t *testing.T, addr string, mockReply chan string) {
+func mockSMTPServer(t *testing.T, addr string, mockReply chan []byte) {
 	mockbe := Backend{
 		mockReply: mockReply,
 	}
@@ -213,8 +215,8 @@ func (s *Session) DataCommand() (io.WriteCloser, int, string, error) {
 func (s *Session) Data(r io.Reader, w io.WriteCloser) (int, string, error) {
 	var buf bytes.Buffer
 	_, err := io.Copy(&buf, r)
-	resp := buf.String()             // get the whole received mail body as a string
-	_, err = io.WriteString(w, resp) // copy through to the writer
+	resp := buf.Bytes()    // get the whole received mail body
+	_, err = w.Write(resp) // copy through to the writer
 	if s.bkd.mockReply != nil {
 		s.bkd.mockReply <- resp
 	}
@@ -242,13 +244,11 @@ func tlsClientConfig(cert []byte, privkey []byte) (*tls.Config, error) {
 	return config, nil
 }
 
-// receive results back from the mock server
-
 //-----------------------------------------------------------------------------
 // wrap_smtp tests
 func TestWrapSMTP(t *testing.T) {
 	rand.Seed(time.Now().UTC().UnixNano())
-	inHostPort := ":5587"
+	inHostPort := "localhost:5587"
 	outHostPort := ":5588"
 	verboseOpt := true
 	downstreamDebug := "debug_wrap_smtp_test.log"
@@ -267,12 +267,10 @@ func TestWrapSMTP(t *testing.T) {
 		t.Log("Proxy writing upstream DATA to", upstreamDebugFile.Name())
 		defer upstreamDebugFile.Close()
 	}
-
 	myWrapper, err := spmta.NewWrapper(wrapURL, true, true, true)
 	if err != nil && !strings.Contains(err.Error(), "empty url") {
 		t.Error(err)
 	}
-
 	// Set up parameters that the backend will use, and initialise the proxy server parameters
 	be := spmta.NewBackend(outHostPort, verboseOpt, upstreamDebugFile, myWrapper, insecureSkipVerify)
 	s := smtpproxy.NewServer(be)
@@ -294,12 +292,36 @@ func TestWrapSMTP(t *testing.T) {
 	}
 
 	// start the upstream mock SMTP server, which will reply in the channel
-	mockReply := make(chan string, 1)
+	mockReply := make(chan []byte, 1)
 	go mockSMTPServer(t, outHostPort, mockReply)
 
 	// start the proxy
 	go startProxy(t, s)
 
+	// Exercise various combinations of security, logging, whether expecting a tracking link to show up in the output etc
+	sendAndCheckEmails(t, inHostPort, 20, "", mockReply, "", PlainEmail) // plaintext email (won't be tracked)
+
+	sendAndCheckEmails(t, inHostPort, 20, "", mockReply, wrapURL, RandomTestEmail) // html email
+
+	sendAndCheckEmails(t, inHostPort, 20, "STARTTLS", mockReply, "", PlainEmail) // plaintext email (won't be tracked)
+
+	sendAndCheckEmails(t, inHostPort, 20, "STARTTLS", mockReply, wrapURL, RandomTestEmail) // html email
+
+	sendAndCheckEmails(t, inHostPort, 20, "STARTTLS", mockReply, wrapURL, Base64HTMLTestEmail) // html base64 encoded
+
+	sendAndCheckEmails(t, inHostPort, 20, "STARTTLS", mockReply, "", NestedEmailRFC822) // A more complex nested mail, which we won't track
+
+	// Flip the logging to non-verbose after the first pass, to exercise that path
+	be.SetVerbose(false)
+	sendAndCheckEmails(t, inHostPort, 20, "STARTTLS", mockReply, wrapURL, RandomTestEmail)
+
+	// Disable wrapping
+	be.SetWrapper(nil)
+	sendAndCheckEmails(t, inHostPort, 20, "STARTTLS", mockReply, "", RandomTestEmail)
+	sendAndCheckEmails(t, inHostPort, 20, "STARTTLS", mockReply, "", NestedEmailRFC822)
+}
+
+func sendAndCheckEmails(t *testing.T, inHostPort string, n int, secure string, mockReply chan []byte, trackingURL string, makeEmail func() string) {
 	// Allow server a little while to start, then send a test mail using standard net/smtp.Client
 	c, err := smtp.Dial(inHostPort)
 	for i := 0; err != nil && i < 10; i++ {
@@ -309,34 +331,34 @@ func TestWrapSMTP(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-
 	// EHLO
-	err = c.Hello("testclient.local")
+	err = c.Hello("localhost")
 	if err != nil {
 		t.Error(err)
 	}
-
 	// STARTTLS
-	if tls, _ := c.Extension("STARTTLS"); tls {
-		// client uses same certs as mock server and proxy, which seems fine for testing purposes
-		cfg, err := tlsClientConfig(localhostCert, localhostKey)
-		if err != nil {
-			t.Error(err)
-		}
-		err = c.StartTLS(cfg)
-		if err != nil {
-			t.Fatal(err)
+	if strings.ToUpper(secure) == "STARTTLS" {
+		if tls, _ := c.Extension("STARTTLS"); tls {
+			// client uses same certs as mock server and proxy, which seems fine for testing purposes
+			cfg, err := tlsClientConfig(localhostCert, localhostKey)
+			if err != nil {
+				t.Error(err)
+			}
+			// only upgrade connection if not already in TLS
+			if _, isTLS := c.TLSConnectionState(); !isTLS {
+				err = c.StartTLS(cfg)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 		}
 	}
-
 	// AUTH
-	auth := smtp.PlainAuth("", "user@example.com", "password", "")
+	auth := smtp.PlainAuth("", "user@example.com", "password", "localhost")
 	err = c.Auth(auth)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
-
-	n := 100 // Send multiple test mails
 	for i := 0; i < n; i++ {
 		// Submit an email .. MAIL FROM, RCPT TO, DATA ...
 		err = c.Mail(RandomRecipient())
@@ -351,7 +373,7 @@ func TestWrapSMTP(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		testEmail := RandomTestEmail()
+		testEmail := makeEmail()
 		r := strings.NewReader(testEmail)
 		bytesWritten, err := io.Copy(w, r)
 		if err != nil {
@@ -370,7 +392,7 @@ func TestWrapSMTP(t *testing.T) {
 		mockr := <-mockReply
 
 		// buf now contains the "wrapped" email
-		outputMail, err := mail.ReadMessage(strings.NewReader(mockr))
+		outputMail, err := mail.ReadMessage(bytes.NewReader(mockr))
 		if err != nil {
 			t.Error(err)
 		}
@@ -378,10 +400,7 @@ func TestWrapSMTP(t *testing.T) {
 		if err != nil {
 			t.Error(err)
 		}
-		compareInOutMail(t, inputMail, outputMail)
-
-		// Flip the logging to non-verbose after the first pass, to exercise that path
-		be.SetVerbose(false)
+		compareInOutMail(t, inputMail, outputMail, trackingURL)
 	}
 
 	// Provoke unknown command
@@ -410,7 +429,7 @@ func TestWrapSMTP(t *testing.T) {
 	}
 }
 
-func compareInOutMail(t *testing.T, inputMail *mail.Message, outputMail *mail.Message) {
+func compareInOutMail(t *testing.T, inputMail *mail.Message, outputMail *mail.Message, trackingURL string) {
 	// check the headers match
 	for hdrType, _ := range inputMail.Header {
 		in := inputMail.Header.Get(hdrType)
@@ -421,7 +440,7 @@ func compareInOutMail(t *testing.T, inputMail *mail.Message, outputMail *mail.Me
 	}
 	// output mail should additionally have a message ID
 	msgID := outputMail.Header.Get(spmta.SparkPostMessageIDHeader)
-	if msgID == "" {
+	if trackingURL != "" && msgID == "" {
 		t.Errorf("outputMail missing message ID header %v", spmta.SparkPostMessageIDHeader)
 	}
 	// Compare body lengths
@@ -433,9 +452,82 @@ func compareInOutMail(t *testing.T, inputMail *mail.Message, outputMail *mail.Me
 	if err != nil {
 		t.Error(err)
 	}
-	if len(inBody) > len(outBody) {
-		t.Errorf("output mail body short \n%v\n", string(outBody))
+
+	// Compare lengths - should be nonzero and within an approx ratio of each other.
+	inL := len(inBody)
+	outL := len(outBody)
+	var upperRatio float64
+	if trackingURL != "" {
+		upperRatio = 3.0 // allow for short emails getting quite a lot longer
+	} else {
+		upperRatio = 1.2 // May not be exact due to header rewriting etc
 	}
+	if inL != 0 && outL != 0 {
+		sizeRatio := float64(outL) / float64(inL)
+		if sizeRatio < 0.9 || sizeRatio > upperRatio {
+			t.Errorf("len(inbody)=%d, len(outbody=%d)\n\n%s\n\n%s\n==================================\n", inL, outL, string(inBody), string(outBody))
+		}
+
+	} else {
+		t.Errorf("len(inbody)=%d, len(outbody=%d)\n\n%s\n\n%s\n==================================\n", inL, outL, string(inBody), string(outBody))
+	}
+
+	// Look if the tracking URL is present. This is quite funky to do if base64
+	if trackingURL != "" {
+		// check tracking domain is present
+		if !checkMIMEPartContains(t, outBody, outputMail.Header.Get("Content-Type"), outputMail.Header.Get("Content-Transfer-Encoding"), trackingURL) {
+			t.Errorf("Expected tracking domain %s to appear in \n\n%s\n==================================\n", trackingURL, string(outBody))
+		}
+
+	}
+}
+
+// checkMIMEBodyContains recursively parses MIME parts, looking for a string match with s
+func checkMIMEPartContains(t *testing.T, part []byte, cType string, cte string, s string) bool {
+	mediaType, params, err := mime.ParseMediaType(cType)
+	if err != nil {
+		return got(part, s) // handle as  plain
+	}
+	if strings.HasPrefix(mediaType, "text") {
+		if cte == "base64" {
+			rd := base64.NewDecoder(base64.StdEncoding, bytes.NewReader(part))
+			decode, err := ioutil.ReadAll(rd)
+			if err != nil {
+				return false
+			}
+			return got(decode, s)
+		} else {
+			return got(part, s) // handle as plain
+		}
+	} else {
+		// from https://golang.org/pkg/mime/multipart/#example_NewReader
+		if strings.HasPrefix(mediaType, "multipart/") {
+			mr := multipart.NewReader(bytes.NewReader(part), params["boundary"])
+			for {
+				p, err := mr.NextPart()
+				if err == io.EOF {
+					return false
+				}
+				if err != nil {
+					return false
+				}
+				pBytes, err := ioutil.ReadAll(p)
+				if err != nil {
+					return false
+				}
+				if checkMIMEPartContains(t, pBytes, p.Header.Get("Content-Type"), p.Header.Get("Content-Transfer-Encoding"), s) {
+					return true
+				} // otherwise keep looking
+			}
+		} else {
+			// Everything else such as text/plain, image/gif etc pass through
+			return got(part, s)
+		}
+	}
+}
+
+func got(body []byte, s string) bool {
+	return strings.Contains(string(body), s)
 }
 
 func makeFakeSession(t *testing.T, be *spmta.Backend, url string) smtpproxy.Session {
@@ -540,37 +632,8 @@ func alreadyClosedFile(t *testing.T) *os.File {
 	if err != nil {
 		t.Error(err)
 	}
+	os.Remove(f.Name())
 	return f
-}
-
-func TestProcessMessageHeadersAndParts(t *testing.T) {
-	testEmail := RandomTestEmail()
-	message, err := mail.ReadMessage(strings.NewReader(testEmail))
-	if err != nil {
-		t.Error(err)
-	}
-	// Prepare to wrap
-	trkDomain := RandomBaseURL()
-	wrap, err := spmta.NewWrapper(trkDomain, true, true, true)
-	if err != nil {
-		t.Error(err)
-	}
-	err = wrap.ProcessMessageHeaders(message.Header)
-	if err != nil {
-		t.Error(err)
-	}
-	// Check that the message ID header was added
-	msgID := message.Header.Get(spmta.SparkPostMessageIDHeader)
-	if len(msgID) != 20 {
-		t.Errorf("message ID header %s should be 20 chars long", spmta.SparkPostMessageIDHeader)
-	}
-	// Handle the message body, grabbing the output into a buffer
-	var outbuf bytes.Buffer
-	err = wrap.HandleMessagePart(&outbuf, message.Body, message.Header.Get("Content-Type"), message.Header.Get("Content-Transfer-Encoding"))
-	s := outbuf.String()
-	if len(s) < len(testEmail) {
-		t.Errorf("A surprisingly small email, len=%d", len(s))
-	}
 }
 
 func TestProcessMessageHeadersFaultyInputs(t *testing.T) {
