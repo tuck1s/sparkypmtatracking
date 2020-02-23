@@ -22,7 +22,7 @@ func main() {
 	verboseOpt := flag.Bool("verbose", false, "print out lots of messages")
 	downstreamDebug := flag.String("downstream_debug", "", "File to write downstream server SMTP conversation for debugging")
 	upstreamDataDebug := flag.String("upstream_data_debug", "", "File to write upstream DATA for debugging")
-	encodeTrackingURL := flag.String("tracking_url", "http://localhost:8888", "URL of your tracking service endpoint")
+	trackingURL := flag.String("tracking_url", "http://localhost:8888", "URL of your tracking service endpoint")
 	trackOpen := flag.Bool("track_open", true, "Insert an open tracking pixel at bottom of HTML mail")
 	trackInitialOpen := flag.Bool("track_initial_open", false, "Insert an initial_open tracking pixel at top of HTML mail")
 	trackLink := flag.Bool("track_click", false, "Wrap links in HTML mail, to track clicks")
@@ -32,8 +32,8 @@ func main() {
 	fmt.Println("Starting smtp proxy service on port", *inHostPort, ", logging to", *logfile)
 	log.Println("Starting smtp proxy service on port", *inHostPort)
 	log.Println("Outgoing host:port set to", *outHostPort)
-	log.Printf("Engagement tracking URL: %s, track_open %v, track_initial_open %v, track_click %v\n", *encodeTrackingURL, *trackOpen, *trackInitialOpen, *trackLink)
-	myWrapper, err := spmta.NewWrapper(*encodeTrackingURL, *trackOpen, *trackInitialOpen, *trackLink)
+	log.Printf("Engagement tracking URL: %s, track_open %v, track_initial_open %v, track_click %v\n", *trackingURL, *trackOpen, *trackInitialOpen, *trackLink)
+	myWrapper, err := spmta.NewWrapper(*trackingURL, *trackOpen, *trackInitialOpen, *trackLink)
 	if err != nil && !strings.Contains(err.Error(), "empty url") {
 		log.Fatal(err)
 	}

@@ -9,9 +9,9 @@
 # needs to be started as root if in_hostport is in range 1..1024
 sudo ./wrapper -in_hostport :587 -out_hostport :5587 \
  -privkeyfile trymsys.net.key -certfile trymsys.net.crt \
- -engagement_url http://pmta.signalsdemo.trymsys.net \
  -logfile wrapper.log \
  -insecure_skip_verify \
+ -tracking_url http://pmta.signalsdemo.trymsys.net \
  -track_open -track_initial_open -track_click &
 
  # -verbose \
