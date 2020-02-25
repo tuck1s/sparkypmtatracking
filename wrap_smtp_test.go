@@ -658,8 +658,15 @@ func TestProcessMessageHeadersFaultyInputs(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	// Too many recipient addresses
+	// Too many recipient addresses (because of a cc)
 	message.Header["Cc"] = []string{"Mary Smith 2<mary2@example.net>"}
+	err = w.ProcessMessageHeaders(message.Header)
+	if err == nil {
+		t.Error(err)
+	}
+	delete(message.Header, "Cc")
+	// Bcc is also an error
+	message.Header["Bcc"] = []string{"Mary Smith 3<mary3@example.net>"}
 	err = w.ProcessMessageHeaders(message.Header)
 	if err == nil {
 		t.Error(err)
