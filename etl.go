@@ -24,9 +24,10 @@ var optionalAcctFields = []string{
 	"rcpt", "header_x-sp-subaccount-id",
 }
 
-// Acccounting header record sent at PowerMTA start, check for required and optional fields.
-// Write these into persistent storage, so that we can decode "d" records in future, separate process invocations.
-func storeHeaders(r []string, client *redis.Client) error {
+// StoreHeaders puts an acccounting header record (sent at PowerMTA startup).
+//   Checks for required and optional fields.
+//   Writes these into persistent storage, so that we can decode "d" records in future, separate process invocations.
+func StoreHeaders(r []string, client *redis.Client) error {
 	log.Printf("PowerMTA accounting headers: %v\n", r)
 	hdrs := make(map[string]int)
 	for _, f := range requiredAcctFields {
@@ -56,8 +57,8 @@ func storeHeaders(r []string, client *redis.Client) error {
 	return nil
 }
 
-// Store a single accounting event r into redis, based on previously seen header format
-func storeEvent(r []string, client *redis.Client) error {
+// StoreEvent puts a single accounting event r into redis, based on previously seen header format
+func StoreEvent(r []string, client *redis.Client) error {
 	hdrsJ, err := client.Get(RedisAcctHeaders).Result()
 	if err == redis.Nil {
 		return fmt.Errorf("Redis key %v not found", RedisAcctHeaders)
@@ -103,13 +104,11 @@ func AccountETL(f io.Reader) error {
 		}
 		switch r[0] {
 		case deliveryType:
-			err := storeEvent(r, client)
-			if err != nil {
+			if err := StoreEvent(r, client); err != nil {
 				return err
 			}
 		case typeField:
-			err := storeHeaders(r, client)
-			if err != nil {
+			if err := StoreHeaders(r, client); err != nil {
 				return err
 			}
 		default:
