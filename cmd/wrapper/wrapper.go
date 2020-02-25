@@ -27,6 +27,13 @@ func main() {
 	trackInitialOpen := flag.Bool("track_initial_open", false, "Insert an initial_open tracking pixel at top of HTML mail")
 	trackLink := flag.Bool("track_click", false, "Wrap links in HTML mail, to track clicks")
 	insecureSkipVerify := flag.Bool("insecure_skip_verify", false, "Skip check of peer cert on upstream side")
+	flag.Usage = func() {
+		const helpText = "SMTP proxy that accepts incoming messages from your downstream client, applies engagement-tracking\n" +
+			"(wrapping links and adding open tracking pixels) and relays on to an upstream server.\n" +
+			"Usage of %s:\n"
+		fmt.Fprintf(flag.CommandLine.Output(), helpText, os.Args[0])
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 	spmta.MyLogger(*logfile)
 	fmt.Println("Starting smtp proxy service on port", *inHostPort, ", logging to", *logfile)

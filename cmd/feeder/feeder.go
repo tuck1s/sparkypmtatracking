@@ -12,6 +12,7 @@ import (
 func main() {
 	const spHostEnvVar = "SPARKPOST_HOST_INGEST"
 	const spAPIKeyEnvVar = "SPARKPOST_API_KEY_INGEST"
+	logfile := flag.String("logfile", "", "File written with message logs")
 	flag.Usage = func() {
 		const helpText = "Takes the opens and clicks from the Redis queue and feeds them to the SparkPost Ingest API\n" +
 			"Requires environment variable %s and optionally %s\n" +
@@ -19,7 +20,6 @@ func main() {
 		fmt.Fprintf(flag.CommandLine.Output(), helpText, spAPIKeyEnvVar, spHostEnvVar, os.Args[0])
 		flag.PrintDefaults()
 	}
-	logfile := flag.String("logfile", "", "File written with message logs")
 	flag.Parse()
 	spmta.MyLogger(*logfile)
 	if *logfile != "" {

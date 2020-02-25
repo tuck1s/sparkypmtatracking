@@ -21,13 +21,14 @@ func main() {
 	encodeTargetLinkURL := encodeCmd.String("target_link_url", "https://example.com", "URL of your target link")
 	encodeTrackingURL := encodeCmd.String("tracking_url", "http://localhost:8888", "URL of your tracking service endpoint")
 	encodeCmd.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "encode\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "\nencode\n")
 		encodeCmd.PrintDefaults()
 	}
 
 	decodeCmd := flag.NewFlagSet("decode", flag.ExitOnError)
 	decodeCmd.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "decode url\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "\ndecode url\n")
+		decodeCmd.PrintDefaults()
 	}
 
 	flag.Usage = func() {

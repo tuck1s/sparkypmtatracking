@@ -135,7 +135,7 @@ You can test without PowerMTA using the included example file:
 ```
 
 ```log
-Starting acct_etl, logging to 
+Starting acct_etl, logging to
 2020/01/10 19:02:32 PowerMTA accounting headers: [type rcpt header_x-sp-message-id header_x-sp-subaccount-id]
 2020/01/10 19:02:32 Loaded acct_headers -> {"header_x-sp-message-id":2,"header_x-sp-subaccount-id":3,"rcpt":1,"type":0} into Redis
 2020/01/10 19:02:32 Loaded msgID_0000123456789abcdef0 -> {"header_x-sp-subaccount-id":"0","rcpt":"test+00102830@not-orange.fr.bouncy-sink.trymsys.net"} into Redis
@@ -155,114 +155,173 @@ SMTP proxy that accepts incoming messages from your downstream client, applies e
 
 TLS with your own local certificate/private key is supported. Each phase of the SMTP conversation, including STARTTLS connection negotiation with the upstream server, proceeds in step with your client requests.
 
-Usage is shown with `-h`, for example `cmd/wrapper/wrapper -h`
 ```
-Usage of cmd/wrapper/wrapper:
+SMTP proxy that accepts incoming messages from your downstream client, applies engagement-tracking
+(wrapping links and adding open tracking pixels) and relays on to an upstream server.
+Usage of ./wrapper:
   -certfile string
-        Certificate file for this server
+    	Certificate file for this server
   -downstream_debug string
-        File to write downstream server SMTP conversation for debugging
-  -engagement_url string
-        Engagement tracking URL used in html email body for opens and clicks
+    	File to write downstream server SMTP conversation for debugging
   -in_hostport string
-        Port number to serve incoming SMTP requests (default "localhost:587")
+    	Port number to serve incoming SMTP requests (default "localhost:587")
   -insecure_skip_verify
-        Skip check of peer cert on upstream side
+    	Skip check of peer cert on upstream side
+  -logfile string
+    	File written with message logs (also to stdout)
   -out_hostport string
-        host:port for onward routing of SMTP requests (default "smtp.sparkpostmail.com:587")
+    	host:port for onward routing of SMTP requests (default "smtp.sparkpostmail.com:587")
   -privkeyfile string
-        Private key file for this server
+    	Private key file for this server
+  -track_click
+    	Wrap links in HTML mail, to track clicks
+  -track_initial_open
+    	Insert an initial_open tracking pixel at top of HTML mail
+  -track_open
+    	Insert an open tracking pixel at bottom of HTML mail (default true)
+  -tracking_url string
+    	URL of your tracking service endpoint (default "http://localhost:8888")
   -upstream_data_debug string
-        File to write upstream DATA for debugging
+    	File to write upstream DATA for debugging
   -verbose
-        print out lots of messages
+    	print out lots of messages
 ```
 
-Example:
+Example proxy receiving on localhost port 5587 and offering its own TLS, sending to an upstream PowerMTA server on poty 587, with all the tracking options enabled.
 
 ```bash
-cmd/wrapper/wrapper -in_hostport :5587 -out_hostport pmta.signalsdemo.trymsys.net:587 -privkeyfile privkey.pem -certfile fullchain.pem -downstream_debug debug_downstream.log -upstream_data_debug debug_upstream.eml --insecure_skip_verify
+./wrapper -in_hostport :5587 -out_hostport pmta.signalsdemo.trymsys.net:587 \
+ -privkeyfile privkey.pem -certfile fullchain.pem \
+ -logfile wrapper.log \
+ -tracking_url http://pmta.signalsdemo.trymsys.net \
+ -track_open -track_initial_open -track_click
+
+```
+Another example (using `sudo` to serve reserved ports below 1024) is in [start.sh](start.sh).
+
+A brief startup message is written to `stdout`. If you omit `-logfile` you'll see the full log output on `stdout`.
+
+```
+Starting smtp proxy service on port :5587 , logging to wrapper.log
+```
+You can now submit messages, using e.g. `swaks`:
+
+```
+swaks --server localhost:5587 --auth-user ##YOUR_USER_HERE## --auth-pass ##YOUR_PASSWORD_HERE## --to bob@example.com --from proxytest@yourdomain.com --tls
 ```
 
-Localhost port 5587 now accepts incoming SMTP messages. You can now submit messages using e.g. `swaks`
-
+If it's working, you'll see output that ends in something like:
 ```
-swaks --server 127.0.0.1:5587 --auth-user SMTP_Injection --auth-pass ##your password here## --to bob.lumreeker@gmail.com --from proxytest@pmta.signalsdemo.trymsys.net --tls --data ../sparkySMTPProxy/test-emails/messenger-tracked.eml 
+<~  250 2.6.0 message received
+ ~> QUIT
+<~  221 2.0.0 pmta.signalsdemo.trymsys.net says goodbye
+=== Connection closed with remote host.
 ```
 
-Startup messages are logged to `wrapper.log`, with a line written each time a message is processed.
+Details are logged to `wrapper.log`:
+```log
+2020/02/25 18:22:03 Starting smtp proxy service on port :5587
+2020/02/25 18:22:03 Outgoing host:port set to pmta.signalsdemo.trymsys.net:587
+2020/02/25 18:22:03 Engagement tracking URL: http://pmta.signalsdemo.trymsys.net, track_open true, track_initial_open true, track_click true
+2020/02/25 18:22:03 Gathered certificate fullchain.pem and key privkey.pem
+2020/02/25 18:22:03 Proxy will advertise itself as smtp.proxy.trymsys.net
+2020/02/25 18:22:03 Verbose SMTP conversation logging: false
+2020/02/25 18:22:03 insecure_skip_verify (Skip check of peer cert on upstream side): false
+```
+
+
+In default (non-verbose) mode, the `Message DATA upstream` log line shows the message size delivered to the upstream server (bytes), upstream server SMTP response code, and text.
 
 ```log
-2019/10/21 20:12:10 Incoming host:port set to :5587
-2019/10/21 20:12:10 Outgoing host:port set to pmta.signalsdemo.trymsys.net:587
-2019/10/21 20:12:10 Proxy writing upstream DATA to debug_upstream.eml
-2019/10/21 20:12:10 Engagement tracking URL: 
-2019/10/21 20:12:10 insecure_skip_verify (Skip check of peer cert on upstream side): true
-2019/10/21 20:12:10 Gathered certificate fullchain.pem and key privkey.pem
-2019/10/21 20:12:10 Proxy will advertise itself as smtp.proxy.trymsys.net
-2019/10/21 20:12:10 Verbose SMTP conversation logging: false
-2019/10/21 20:12:10 Proxy logging SMTP commands, responses and downstream DATA to debug_downstream.log
+2020/02/25 18:44:53 Message DATA upstream,328,250,2.6.0 message received
 ```
 
-In default (non-verbose) mode, the line `Message Data upstream` shows the upstream message size (bytes), upstream server SMTP response code and text.
-
-```log
-2019/10/21 20:12:16 Message DATA upstream,49496,250,2.6.0 message received
-```
-
-In verbose mode, logfile shows downstream and upstream SMTP conversation traces, in a similar manner to the progress messages shown by `swaks` 
-
-```log
-2019/10/21 21:40:21 ---Connecting upstream
-2019/10/21 21:40:22 	<- Connection success pmta.signalsdemo.trymsys.net:587
-2019/10/21 21:40:22 -> EHLO
-2019/10/21 21:40:22 	<- EHLO success
-2019/10/21 21:40:22 	Upstream capabilities: [8BITMIME AUTH CRAM-MD5 AUTH=CRAM-MD5 CHUNKING DSN ENHANCEDSTATUSCODES PIPELINING SIZE 0 SMTPUTF8 STARTTLS VERP XACK]
-2019/10/21 21:40:22 -> STARTTLS
-2019/10/21 21:40:22 	<~ 220 2.0.0 ready to start TLS
-2019/10/21 21:40:22 ~> EHLO
-2019/10/21 21:40:23 	<~ EHLO success
-2019/10/21 21:40:23 	Upstream capabilities: [8BITMIME AUTH CRAM-MD5 PLAIN LOGIN AUTH=CRAM-MD5 PLAIN LOGIN CHUNKING DSN ENHANCEDSTATUSCODES PIPELINING SIZE 0 SMTPUTF8 VERP XACK]
-2019/10/21 21:40:23 ~> AUTH PLAIN xyzzy=
-2019/10/21 21:40:23 	<~ 235 2.7.0 authentication succeeded
-2019/10/21 21:40:23 ~> MAIL FROM:<proxytest@pmta.signalsdemo.trymsys.net>
-2019/10/21 21:40:23 	<~ 250 2.1.0 MAIL ok
-2019/10/21 21:40:23 ~> RCPT TO:<bob.lumreeker@gmail.com>
-2019/10/21 21:40:23 	<~ 250 2.1.5 <bob.lumreeker@gmail.com> ok
-2019/10/21 21:40:23 ~> DATA
-2019/10/21 21:40:24 	<~ DATA accepted, bytes written = 49496
-2019/10/21 21:40:24 	<~ 250 2.6.0 message received
-2019/10/21 21:40:24 ~> QUIT 
-2019/10/21 21:40:25 	<~ 221 2.0.0 pmta.signalsdemo.trymsys.net says goodbye
-```
-
-### Interfaces to listen on
-Note that `-in_hostport localhost:587` accepts traffic sources only from the local machine. To accept traffic on all network interfaces, use `-in_hostport 0.0.0.0:587`.
+### Hints on choosing your listener interface
+Note that `-in_hostport localhost:x` accepts traffic sources only from your local machine. To listen for traffic on all your network interfaces on port x, use `-in_hostport 0.0.0.0:x`.
 
 ### STARTTLS and certificates
-STARTTLS support for your downstream client requires:
-- a pair of files, containing matching public certificate & private keys, for your  proxy domain, in `.pem` format;
-- an upstream host that supports STARTTLS;
-- specify these files using the `-privkeyfile` and `-certfile` command line flags.
+STARTTLS requires:
+- A pair of files, containing matching public certificate & private keys, for your proxy domain, in [.pem](https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail) format. [LetsEncrypt](https://letsencrypt.org/) is a possible source for these;
+- An upstream host that supports STARTTLS;
+- A downstream client that will negotiate STARTTLS when offered.
 
-The proxy simply passes SMTP options from the upstream server connection to the downstream client.
+Specify these files using the `-privkeyfile` and `-certfile` command line flags.
+
+The proxy passes SMTP options from the upstream server connection to the downstream client.
 Your client, of course, can choose whether to proceed with a plain (insecure) connection or not.
 
-If you have no certificates for your proxy domain, then omit the `-privkeyfile` and `-certfile` flags. 
+If you have no certificates for your proxy domain, then omit the `-privkeyfile` and `-certfile` flags.
 
 ### Upstream server certificate validity
-The proxy TLS library checks validity of upstream certificates used with TLS.
-If your upstream server has a self-signed, or otherwise invalid certificate, you'll see
+The proxy checks validity of upstream certificates used with TLS.
+If your upstream server has a self-signed, or otherwise invalid certificate, you'll see an error such as:
 
 ```log
 2019/10/21 21:37:03 	<~ EHLO error x509: certificate is valid for ip-172-31-25-101.us-west-2.compute.internal, localhost, not pmta.signalsdemo.trymsys.net
 ```
+
 Proper solution: install a valid certificate on your upstream server.
 
-Workaround: you can use the `-insecure_skip_verify` flag to make the proxy tolerant of your upstream server cert.
+Workaround: you can use the `-insecure_skip_verify` flag to make the proxy tolerant of your invalid upstream server cert.
+
+You can check that your proxy/server combo is offering STARTTLS using `swaks`, or `telnet`, and type `EHLO THERE`:
+
+```
+telnet localhost 5587
+Trying ::1...
+Connected to localhost.
+Escape character is '^]'.
+220 *.trymsys.net ESMTP Service Ready
+EHLO THERE
+250-Hello THERE
+250-8BITMIME
+250-AUTH CRAM-MD5
+250-AUTH=CRAM-MD5
+250-CHUNKING
+250-DSN
+250-ENHANCEDSTATUSCODES
+250-PIPELINING
+250-SIZE 0
+250-SMTPUTF8
+250-STARTTLS
+250-VERP
+250-XACK
+250 XMRG
+```
+
+## verbose
+
+In verbose mode, your logfile shows the proxy downstream and upstream SMTP conversation sides, in a similar manner to the progress messages shown by `swaks` client.
+
+```log
+2020/02/25 18:55:04 ---Connecting upstream
+2020/02/25 18:55:04 < Connection success pmta.signalsdemo.trymsys.net:587
+2020/02/25 18:55:04 -> EHLO
+2020/02/25 18:55:04 	<- EHLO success
+2020/02/25 18:55:04 	Upstream capabilities: [8BITMIME AUTH CRAM-MD5 AUTH=CRAM-MD5 CHUNKING DSN ENHANCEDSTATUSCODES PIPELINING SIZE 0 SMTPUTF8 STARTTLS VERP XACK XMRG]
+2020/02/25 18:55:04 -> STARTTLS
+2020/02/25 18:55:05 	<~ 220 2.0.0 ready to start TLS
+2020/02/25 18:55:05 ~> EHLO
+2020/02/25 18:55:05 	<~ EHLO success
+2020/02/25 18:55:05 	Upstream capabilities: [8BITMIME AUTH CRAM-MD5 PLAIN LOGIN AUTH=CRAM-MD5 PLAIN LOGIN CHUNKING DSN ENHANCEDSTATUSCODES PIPELINING SIZE 0 SMTPUTF8 VERP XACK XMRG]
+2020/02/25 18:55:05 ~> AUTH CRAM-MD5
+2020/02/25 18:55:05 	<~ 334 ##REDACTED##
+2020/02/25 18:55:05 ~> ##REDACTED## 
+2020/02/25 18:55:05 	<~ 235 2.7.0 authentication succeeded
+2020/02/25 18:55:05 ~> MAIL FROM:<test@example.com>
+2020/02/25 18:55:05 	<~ 250 2.1.0 MAIL ok
+2020/02/25 18:55:05 ~> RCPT TO:<test@bouncy-sink.trymsys.net>
+2020/02/25 18:55:06 	<~ 250 2.1.5 <test@bouncy-sink.trymsys.net> ok
+2020/02/25 18:55:06 ~> DATA
+2020/02/25 18:55:06 	<~ DATA accepted, bytes written = 328
+2020/02/25 18:55:06 ~> QUIT 
+2020/02/25 18:55:06 	<~ 221 2.0.0 pmta.signalsdemo.trymsys.net says goodbye
+```
+
+The proxy passes the authentication methods and credentials through, between your upstream server and client. I have tested with `AUTH LOGIN`, `AUTH PLAIN` and `AUTH CRAM-MD5`.
 
 ### downstream_debug
-This option captures the entire conversation on the downstream (client) side, including SMTP cmmands and responses and the DATA phase containing message headers and body.
+This option captures the conversation on the downstream (client) side, including SMTP cmmands and responses and the DATA phase containing message headers and body.
 
 The file is created afresh each time the program is started (i.e. not appended to).
 Use with caution as debug files can get large.
@@ -270,15 +329,16 @@ Use with caution as debug files can get large.
 ### upstream_data_debug
 This option captures the DATA phase on the upstream (server) side, containing message headers and body. When engagement tracking is being used, the upstream content will be different to the downstream content as a header is added, links are tracked, and open pixels added.
 
-The file is created afresh each time the program is started (i.e. not appended to).
+The file is created afresh each time the program is started (i.e. not appended to). A file containing a single test message captured in this way (e.g. ` -upstream_data_debug debug_up.eml`) is RFC822 compliant and can be viewed directly in a mail client, e.g.
+
+```
+/Applications/Thunderbird.app/Contents/MacOS/thunderbird debug_up.eml
+```
+
 Use with caution as debug files can get large.
 
 ### example email files
-Some example `.eml` content can be used to send through the wrapper proxy with `swaks`:
- 
-```bash
-swaks --server smtp.proxy.trymsys.net:587 --auth-user SMTP_Injection --auth-pass YOUR_KEY_HERE --to bob.lumreeker@gmail.com --from via_proxy@email.thetucks.com --data example2.eml --tls
-``` 
+The project includes an [example file](example.eml) you can send with `swaks`. Adjust the `From:` and `To:` address to suit your configuration.
 
 ---
 
@@ -288,6 +348,7 @@ Command-line tool to encode and decode link URLs, useful during testing.
 ```
 ./linktool -h
 ./linktool [encode|decode] encode and decode link URLs
+
 encode
   -action string
         [open|initial_open|click] (default "open")
@@ -299,6 +360,7 @@ encode
         URL of your target link (default "https://example.com")
   -tracking_url string
         URL of your tracking service endpoint (default "http://localhost:8888")
+
 decode url
 ```
 
@@ -339,7 +401,7 @@ go get gopkg.in/natefinch/lumberjack.v2
 Run the `./build.sh` script included in the project, to build each app.
 
 # Run
-Script `start.sh` is provided as a starting point for you to customise, along with an example `cronfile` that can be used to start services on  boot:
+Script [start.sh](start.sh) is provided as a starting point for you to customise, along with an example [cronfile](cronfile) that can be used to start services on  boot:
 
 ```
 crontab cronfile
@@ -347,7 +409,7 @@ crontab cronfile
 or `crontab -e` then paste in cronfile contents.
 
 # CI code tests
-The project includes built-in test files as per usual Go / Travis CI / Coveralls practices.
+The project includes built-in tests as per usual Go / Travis CI / Coveralls practices.
 
 # Pre-requisites
 
@@ -365,7 +427,7 @@ Follow the QuickStart guide [here](https://redis.io/topics/quickstart), followin
 and "Installing Redis more properly" steps. EC2 Linux does not have the
 update-rc.d command, use `sudo chkconfig redis_6379 on` instead.
 
-Here's the detailed steps. This project assumes port `6379` on your host.                           
+Here's the detailed steps. This project assumes port `6379` on your host.                          
 
 ```
 # Building
