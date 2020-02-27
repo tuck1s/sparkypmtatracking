@@ -76,7 +76,7 @@ The logfile records the action (open/click), target URL, datetime, user_agent, a
 ```log
 2020/01/09 15:40:27 Timestamp 1578584427, IPAddress 127.0.0.1, UserAgent Mozilla/5.0 (Linux; Android 4.4.2; XMP-6250 Build/HAWK) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/30.0.0.0 Safari/537.36 ADAPI/2.0 (UUID:9e7df0ed-2a5c-4a19-bec7-2cc54800f99d) RK3188-ADAPI/1.2.84.533 (MODEL:XMP-6250), Action c, URL http://example.com/index.html, MsgID 00006449175e39c767c2
 2020/01/09 15:40:27 Timestamp 1578584427, IPAddress 127.0.0.1, UserAgent Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.157 Safari/537.36, Action o, URL , MsgID 00006449175eea2bd529
-``` 
+```
 
 You can test your service endpoint locally using `curl` to a link address, such as 
 
@@ -151,9 +151,9 @@ Redis key/value pairs hold data for each message ID, with a configured time-to-l
 You can list these keys with `redis-cli keys msgID*`.
 
 ## wrapper
-SMTP proxy that accepts incoming messages from your downstream client, applies engagement-tracking (wrapping links and adding open tracking pixels) and relays on to an upstream server.
+This is an SMTP proxy service that accepts incoming messages from your downstream client, applies engagement-tracking (wrapping links and adding open tracking pixels) and relays on to an upstream server.
 
-TLS with your own local certificate/private key is supported. Each phase of the SMTP conversation, including STARTTLS connection negotiation with the upstream server, proceeds in step with your client requests.
+TLS with your own local certificate/private key is supported.
 
 ```
 SMTP proxy that accepts incoming messages from your downstream client, applies engagement-tracking
@@ -187,7 +187,12 @@ Usage of ./wrapper:
     	print out lots of messages
 ```
 
-Example proxy receiving on localhost port 5587 and offering its own TLS, sending to an upstream PowerMTA server on poty 587, with all the tracking options enabled.
+Example setup that will:
+- Receive downstream client connections on localhost port 5587
+- Forward emails to an upstream PowerMTA server on port 587
+- Offer its own TLS using the supplied certificates
+- Log activity to a file
+- All tracking options enabled.
 
 ```bash
 ./wrapper -in_hostport :5587 -out_hostport pmta.signalsdemo.trymsys.net:587 \
@@ -195,22 +200,36 @@ Example proxy receiving on localhost port 5587 and offering its own TLS, sending
  -logfile wrapper.log \
  -tracking_url http://pmta.signalsdemo.trymsys.net \
  -track_open -track_initial_open -track_click
+```
+
+Each phase of the SMTP conversation, including STARTTLS connection negotiation with the upstream server, proceeds in step with your downstream client requests.
 
 ```
+Client      Proxy       Server
+       -> 
+                   ->
+                   <-
+       <-
+```
+
+Response codes from the upstream server are echoed back to the downstream client as transparently as possible.
+
 Another example (using `sudo` to serve reserved ports below 1024) is in [start.sh](start.sh).
 
-A brief startup message is written to `stdout`. If you omit `-logfile` you'll see the full log output on `stdout`.
-
+On startup, a brief message is written to `stdout`.
 ```
 Starting smtp proxy service on port :5587 , logging to wrapper.log
 ```
-You can now submit messages, using e.g. `swaks`:
+
+If you omit `-logfile`,  log output is written to `stdout`.
+
+Example message submission using `swaks`:
 
 ```
 swaks --server localhost:5587 --auth-user ##YOUR_USER_HERE## --auth-pass ##YOUR_PASSWORD_HERE## --to bob@example.com --from proxytest@yourdomain.com --tls
 ```
 
-If it's working, you'll see output that ends in something like:
+You'll see client output that ends in something like:
 ```
 <~  250 2.6.0 message received
  ~> QUIT
@@ -227,71 +246,16 @@ Details are logged to `wrapper.log`:
 2020/02/25 18:22:03 Proxy will advertise itself as smtp.proxy.trymsys.net
 2020/02/25 18:22:03 Verbose SMTP conversation logging: false
 2020/02/25 18:22:03 insecure_skip_verify (Skip check of peer cert on upstream side): false
-```
-
-
-In default (non-verbose) mode, the `Message DATA upstream` log line shows the message size delivered to the upstream server (bytes), upstream server SMTP response code, and text.
-
-```log
 2020/02/25 18:44:53 Message DATA upstream,328,250,2.6.0 message received
 ```
 
-### Hints on choosing your listener interface
-Note that `-in_hostport localhost:x` accepts traffic sources only from your local machine. To listen for traffic on all your network interfaces on port x, use `-in_hostport 0.0.0.0:x`.
+In default (non-verbose) mode, the `Message DATA upstream` log line shows the message size delivered to the upstream server (bytes), upstream server SMTP response code, and text. 
 
-### STARTTLS and certificates
-STARTTLS requires:
-- A pair of files, containing matching public certificate & private keys, for your proxy domain, in [.pem](https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail) format. [LetsEncrypt](https://letsencrypt.org/) is a possible source for these;
-- An upstream host that supports STARTTLS;
-- A downstream client that will negotiate STARTTLS when offered.
-
-Specify these files using the `-privkeyfile` and `-certfile` command line flags.
-
-The proxy passes SMTP options from the upstream server connection to the downstream client.
-Your client, of course, can choose whether to proceed with a plain (insecure) connection or not.
-
-If you have no certificates for your proxy domain, then omit the `-privkeyfile` and `-certfile` flags.
-
-### Upstream server certificate validity
-The proxy checks validity of upstream certificates used with TLS.
-If your upstream server has a self-signed, or otherwise invalid certificate, you'll see an error such as:
-
-```log
-2019/10/21 21:37:03 	<~ EHLO error x509: certificate is valid for ip-172-31-25-101.us-west-2.compute.internal, localhost, not pmta.signalsdemo.trymsys.net
-```
-
-Proper solution: install a valid certificate on your upstream server.
-
-Workaround: you can use the `-insecure_skip_verify` flag to make the proxy tolerant of your invalid upstream server cert.
-
-You can check that your proxy/server combo is offering STARTTLS using `swaks`, or `telnet`, and type `EHLO THERE`:
-
-```
-telnet localhost 5587
-Trying ::1...
-Connected to localhost.
-Escape character is '^]'.
-220 *.trymsys.net ESMTP Service Ready
-EHLO THERE
-250-Hello THERE
-250-8BITMIME
-250-AUTH CRAM-MD5
-250-AUTH=CRAM-MD5
-250-CHUNKING
-250-DSN
-250-ENHANCEDSTATUSCODES
-250-PIPELINING
-250-SIZE 0
-250-SMTPUTF8
-250-STARTTLS
-250-VERP
-250-XACK
-250 XMRG
-```
+### Authentication
+The proxy passes the authentication methods and credentials through, between your upstream server and client; the proxy does not check your client's credentials. I have tested passthrough of `AUTH LOGIN`, `AUTH PLAIN` and `AUTH CRAM-MD5`.
 
 ## verbose
-
-In verbose mode, your logfile shows the proxy downstream and upstream SMTP conversation sides, in a similar manner to the progress messages shown by `swaks` client.
+In verbose mode, your logfile shows the proxy downstream and upstream SMTP conversation sides, in a similar manner to the progress messages shown by `swaks` client. This is useful during setup and testing.
 
 ```log
 2020/02/25 18:55:04 ---Connecting upstream
@@ -318,22 +282,41 @@ In verbose mode, your logfile shows the proxy downstream and upstream SMTP conve
 2020/02/25 18:55:06 	<~ 221 2.0.0 pmta.signalsdemo.trymsys.net says goodbye
 ```
 
-The proxy passes the authentication methods and credentials through, between your upstream server and client. I have tested with `AUTH LOGIN`, `AUTH PLAIN` and `AUTH CRAM-MD5`.
+### STARTTLS and certificates
+STARTTLS requires:
+- A pair of files, containing matching public certificate & private keys, for your proxy domain, in [.pem](https://en.wikipedia.org/wiki/Privacy-Enhanced_Mail) format. [LetsEncrypt](https://letsencrypt.org/) is a possible source for these;
+- An upstream host that supports STARTTLS;
+- A downstream client that will negotiate STARTTLS when offered.
+
+Specify these files using the `-privkeyfile` and `-certfile` command line flags.
+
+The proxy passes SMTP options from the upstream server connection to the downstream client.
+Your client, of course, can choose whether to proceed with a plain (insecure) connection or not.
+
+If you have no certificates for your proxy domain, then omit the `-privkeyfile` and `-certfile` flags.
+
+### Upstream server certificate validity
+The proxy checks validity of upstream certificates used with TLS.
+If your upstream server has a self-signed, or otherwise invalid certificate, you'll see an error such as:
+
+```log
+2019/10/21 21:37:03 	<~ EHLO error x509: certificate is valid for ip-172-31-25-101.us-west-2.compute.internal, localhost, not pmta.signalsdemo.trymsys.net
+```
+
+You can either install a valid certificate on your upstream server (preferred!) or use the proxy `-insecure_skip_verify` flag to make the proxy tolerant of your invalid upstream server cert.
+
+### Choosing your listener interface
+Note that `-in_hostport localhost:x` accepts traffic sources only from your local machine. To listen for traffic on all your network interfaces on port x, use `-in_hostport 0.0.0.0:x`.
 
 ### downstream_debug
 This option captures the conversation on the downstream (client) side, including SMTP cmmands and responses and the DATA phase containing message headers and body.
 
-The file is created afresh each time the program is started (i.e. not appended to).
-Use with caution as debug files can get large.
+The file is created afresh each time the program is started (i.e. not appended to). Use with caution as debug files can get large.
 
 ### upstream_data_debug
 This option captures the DATA phase on the upstream (server) side, containing message headers and body. When engagement tracking is being used, the upstream content will be different to the downstream content as a header is added, links are tracked, and open pixels added.
 
-The file is created afresh each time the program is started (i.e. not appended to). A file containing a single test message captured in this way (e.g. ` -upstream_data_debug debug_up.eml`) is RFC822 compliant and can be viewed directly in a mail client, e.g.
-
-```
-/Applications/Thunderbird.app/Contents/MacOS/thunderbird debug_up.eml
-```
+The file is created afresh each time the program is started (i.e. not appended to). A file containing a single test message captured in this way (e.g. ` -upstream_data_debug debug_up.eml`) is RFC822 compliant and can be viewed directly in a mail client.
 
 Use with caution as debug files can get large.
 
@@ -419,37 +402,15 @@ Your package manager should install these for you, e.g.
 sudo yum install git go
 ``` 
 
-## Redis
+## Redis on Amazon Linux 1
+ ```
+ sudo yum-config-manager --enable epel
+ sudo yum install -y redis
+ sudo service redis start
+ ```
+Amazon Linux 2 provides a Redis package in [amazon-linux-extras](https://aws.amazon.com/amazon-linux-2/faqs/).
 
-Redis does not currently seem to be available via a package manager on EC2 Linux.
-
-Follow the QuickStart guide [here](https://redis.io/topics/quickstart), following the "Installing Redis" steps
-and "Installing Redis more properly" steps. EC2 Linux does not have the
-update-rc.d command, use `sudo chkconfig redis_6379 on` instead.
-
-Here's the detailed steps. This project assumes port `6379` on your host.                          
-
-```
-# Building
-wget http://download.redis.io/redis-stable.tar.gz
-tar xvzf redis-stable.tar.gz
-cd redis-stable
-make
-sudo make install
-
-# install "properly" as a service
-sudo vi /etc/redis/6379.conf
-sudo cp utils/redis_init_script /etc/init.d/redis_6379
-sudo vi /etc/init.d/redis_6379
-sudo cp redis.conf /etc/redis/6379.conf
-sudo mkdir /var/redis/6379
-sudo vim /etc/redis/6379.conf
-
-sudo chkconfig redis_6379 on
-sudo /etc/init.d/redis_6379 start
-```
-
-Check you now have `redis` installed and working.
+This project assumes the usual port `6379` on your host. Check you now have `redis` installed and working.
 ```
 redis-cli --version
 ```
@@ -457,7 +418,7 @@ you should see `redis-cli 5.0.5` or similar
 ```
 redis-cli PING
 ```
-you should see `PONG`
+you should see `PONG`.
 
 
 ## NGINX 

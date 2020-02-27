@@ -15,6 +15,9 @@ var TransparentGif = []byte("GIF89a\x01\x00\x01\x00\x80\x00\x00\xff\xff\xff" +
 	"\xff\xff\xff\x21\xf9\x04\x01\x0a\x00\x01\x00\x2c\x00\x00\x00\x00" +
 	"\x01\x00\x01\x00\x00\x02\x02\x4c\x01\x00\x3b\x00")
 
+// XRealIPHeader is a header that will be used, if provided (e.g. from NGINX)
+const XRealIPHeader = "X-Real-Ip"
+
 // TrackingServer expects URL paths of the form /xyzzy
 // where xyzzy = base64 urlsafe encoded, Zlib compressed, []byte
 // These are written to the Redis queue
@@ -37,8 +40,20 @@ func TrackingServer(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	var e TrackEvent
-	e.UserAgent = req.UserAgent() // add user agent
-	e.IPAddress, _, _ = net.SplitHostPort(req.RemoteAddr)
+	e.UserAgent = req.UserAgent()
+	// Look for the original client IP from Nginx, if present - check syntax then use it
+	if xRealIP := req.Header.Get(XRealIPHeader); xRealIP != "" {
+		if checkedIP := net.ParseIP(xRealIP); checkedIP != nil {
+			e.IPAddress = checkedIP.String()
+		} else {
+			log.Printf("Invalid %s header found=%s\n", XRealIPHeader, xRealIP)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+	} else {
+		e.IPAddress, _, _ = net.SplitHostPort(req.RemoteAddr)
+	}
+
 	e.TimeStamp = strconv.FormatInt(time.Now().Unix(), 10)
 
 	eBytes, err := DecodePath(s[1])
