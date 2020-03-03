@@ -420,13 +420,13 @@ redis-cli PING
 you should see `PONG`.
 
 ## NGINX
-This can be used to protect your open/click tracking server. The [example config file]() in this project uses the following Nginx features:
+This can be used to protect your open/click tracking server. The [example config file](etc/nginx/conf/server_example.conf) in this project uses the following Nginx features/modules:
 - http-ssl
 - http-v2
 - headers-more
 
-### NGINX Yum/EPEL/Webtatic install on Amazon Linux
-If you have access to the EPEL and Webtatic repos, you can use a `yum` based install to get Nginx with those features.
+### NGINX yum/EPEL/webtatic install on Amazon Linux
+If you have access to the EPEL and Webtatic repos on your platform, you can use `yum`-based install to get Nginx with added modules:
 ```
 sudo yum update -y
 sudo amazon-linux-extras install epel
@@ -450,7 +450,7 @@ If you wish to use standard ports (80, 443) for tracking:
 
 Check the endpoint is active from another host, using `curl` as above, but using your external host address and port number.
 
-### Alternative to Yum install: source-based install
+### Alternative to yum install: source-based install
 The standard Nginx version available via `yum` does not have all needed features. You can build from source, providing you have `gcc` and `git` installed.
 ```
 sudo yum install -y gcc git # pre-requisites
