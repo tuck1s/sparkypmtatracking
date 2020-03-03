@@ -3,10 +3,6 @@ setenvs.sh
 *.log
 /etc/pmta/config
 .vscode/*
-cmd/acct_etl/__debug_bin
-cmd/tracker/__debug_bin
-cmd/feeder/__debug_bin
-cmd/wrapper/__debug_bin
 .DS_Store
 debug*.eml
 debug*.txt
@@ -14,10 +10,10 @@ debug*.txt
 *.pem
 c.out
 # exclude local build binaries
-acct_etl
-feeder
-tracker
-wrapper
+cmd/acct_etl/__debug_bin
+cmd/tracker/__debug_bin
+cmd/feeder/__debug_bin
+cmd/wrapper/__debug_bin
 # local test files
 setenvs.sh
 trk_queue.sh
@@ -25,3 +21,4 @@ example*.eml
 smt.code-workspace
 debug.test
 linktool
+
