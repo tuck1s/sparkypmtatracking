@@ -1,5 +1,5 @@
 # wrapper
-This is an SMTP proxy service that accepts incoming messages from your downstream client, applies engagement-tracking (wrapping links and adding open tracking pixels) and relays on to an upstream server.
+SMTP proxy service that accepts incoming messages from your downstream client, applies engagement-tracking (wrapping links and adding open tracking pixels) and relays on to an upstream server.
 
 TLS with your own local certificate/private key is supported.
 

@@ -20,5 +20,5 @@ trk_queue.sh
 example*.eml
 smt.code-workspace
 debug.test
-linktool
+
 

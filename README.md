@@ -20,28 +20,34 @@ Open and click tracking modules for PMTA and SparkPost Signals:
 
 Click above links for command-specific README.
 
-## Pre-requisites
-- Git & Golang - installation tips [here](#installing-git-golang-on-your-host)
-- Redis - installation tips [here](#installing-redis-on-your-host)
-- NGINX - installation tips [here](#installing-and-configuring-nginx-proxy)
+# Install
+First, check you have the the pre-requisites ([installation tips](#pre-requisites)):
 
+- Git & Golang
+- Redis
+- NGINX
 
-# Build project from source
-First, check you have the the [Pre-requisites](#pre-requisites). If you don't have `$GOPATH` set already, do:
+ If you don't have `$GOPATH` set already:
 ```
-cd ~
+cd /home/ec2-user/ 
 mkdir go
 export GOPATH=/home/ec2-user/go # change this to suit the directory you just made
 ```
 
-Get this project (and its dependent libraries), and build them in place
+# Build project from source
+Get this project (and its dependent libraries):
 
 ```
 go get github.com/tuck1s/sparkypmtatracking
-
 ```
 
-Run the `./build.sh` script included in the project, to build each app.
+Compile binaries, which will be placed in the main project folder:
+```
+cd sparkypmtatracking
+./build.sh
+```
+
+You can now run a command with (e.g.) ` ./linktool -h`.
 
 # Run
 Script [start.sh](start.sh) is provided as a starting point for you to customise, along with an example [cronfile](cronfile) that can be used to start services on boot:
@@ -55,14 +61,15 @@ or `crontab -e` then paste in cronfile contents.
 The project includes built-in tests as per usual Go / Travis CI / Coveralls practices.
 
 ---
-
 # Pre-requisites
 
-## Git, Golang
-Your package manager should provide installation for these, e.g.
+## Git and Golang
+Your package manager should provide easy installation for these, e.g.
 ```
 sudo yum install -y git go
 ```
+
+---
 
 ## Redis on Amazon Linux
 ```
@@ -80,13 +87,14 @@ redis-cli PING
 ```
 you should see `PONG`.
 
+---
 ## NGINX
 This can be used to protect your open/click tracking server. The [example config file](etc/nginx/conf/server_example.conf) in this project uses the following Nginx features/modules:
 - http-ssl
 - http-v2
 - headers-more
 
-### NGINX yum/EPEL/webtatic install on Amazon Linux
+### yum/EPEL/webtatic install on Amazon Linux
 If you have access to the EPEL and Webtatic repos on your platform, you can use `yum`-based install to get Nginx with added modules:
 ```
 sudo yum update -y
