@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	spmta "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkypmtatracking"
 )
 
 //-----------------------------------------------------------------------------

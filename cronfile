@@ -4,4 +4,4 @@
 # cron requires absolute paths and unfortunately $GOPATH does not seem available to it.
 # Adjust the path below to suit your installation.
 #
-@reboot cd /home/ec2-user/go/src/github.com/tuck1s/sparkyPMTATracking; ./start.sh >>/home/ec2-user/cron.log 2>&1
+@reboot cd /home/ec2-user/go/src/github.com/tuck1s/sparkypmtatracking; ./start.sh >>/home/ec2-user/cron.log 2>&1

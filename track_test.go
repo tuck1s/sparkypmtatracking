@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/go-redis/redis"
-	spmta "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkypmtatracking"
 )
 
 // runHTTPTest wrapper convenience function

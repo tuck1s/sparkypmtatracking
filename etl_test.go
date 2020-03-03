@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	spmta "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkypmtatracking"
 )
 
 const exampleCSV = `type,rcpt,header_x-sp-message-id,header_x-sp-subaccount-id

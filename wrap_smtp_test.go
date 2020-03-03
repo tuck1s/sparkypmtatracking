@@ -18,7 +18,7 @@ import (
 	"time"
 
 	smtpproxy "github.com/tuck1s/go-smtpproxy"
-	spmta "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkypmtatracking"
 )
 
 // localhostCert is a PEM-encoded TLS cert.pem, made for domain test.example.com

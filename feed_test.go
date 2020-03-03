@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/go-redis/redis"
-	spmta "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkypmtatracking"
 )
 
 const mockAPIKey = "xyzzy"

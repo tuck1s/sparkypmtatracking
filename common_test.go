@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	spmta "github.com/tuck1s/sparkyPMTATracking"
+	spmta "sparkypmtatracking"
 )
 
 // Can't test ConsoleAndLogFatal() as it exits
