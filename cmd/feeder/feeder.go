@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	spmta "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkypmtatracking"
 )
 
 func main() {

@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/tuck1s/go-smtpproxy"
-	spmta "github.com/tuck1s/sparkyPMTATracking"
+	spmta "github.com/tuck1s/sparkypmtatracking"
 )
 
 func main() {
