@@ -25,7 +25,7 @@ First, check you have the the pre-requisites ([installation tips](#pre-requisite
 
 - Git & Golang
 - Redis
-- NGINX
+- NGINX (not strictly required, but recommended)
 
  If you don't have `$GOPATH` set already:
 ```
@@ -34,8 +34,25 @@ mkdir go
 export GOPATH=/home/ec2-user/go # change this to suit the directory you just made
 ```
 
+# Run
+If you just wish to run these programs unchanged, binaries (executables) for various platforms can be downloaded from the project [releases](https://github.com/tuck1s/sparkypmtatracking/releases) area, with 32-bit and 64-bit architecture variants.
+- OSX ("Darwin")
+- Linux
+- Windows
+- FreeBSD
+
+The files are in `.tar.gz` format. For Windows, [7-Zip](https://www.7-zip.org/) can open these archives.
+
+Script [start.sh](start.sh) is provided as a starting point for you to customise, along with an example [cronfile](cronfile) that can be used to start services on boot:
+
+```
+crontab cronfile
+```
+or `crontab -e` then paste in cronfile contents.
+
+
 # Build project from source
-Get this project (and its dependent libraries):
+Get this project, together with its dependent libraries - Go makes this really easy.
 
 ```
 go get github.com/tuck1s/sparkypmtatracking
@@ -47,18 +64,10 @@ cd sparkypmtatracking
 ./build.sh
 ```
 
-You can now run a command with (e.g.) ` ./linktool -h`.
-
-# Run
-Script [start.sh](start.sh) is provided as a starting point for you to customise, along with an example [cronfile](cronfile) that can be used to start services on boot:
-
-```
-crontab cronfile
-```
-or `crontab -e` then paste in cronfile contents.
+The binaries will be in the main project folder and can be run with (e.g.) ` ./linktool -h`.
 
 # CI code tests
-The project includes built-in tests as per usual Go / Travis CI / Coveralls practices.
+The project includes built-in tests as per usual Go / Travis CI / Coveralls practices - see "badges" at top of this
 
 ---
 # Pre-requisites
@@ -71,12 +80,15 @@ sudo yum install -y git go
 
 ---
 
-## Redis on Amazon Linux
+## Redis (on Amazon Linux)
 ```
-sudo amazon-linux-extras install epel
-sudo yum install -y redis
+sudo yum update -y
+sudo amazon-linux-extras install epel # if this command not available, use yum install -y epel-release
+sudo yum install -y redis # If this fails, add the --enablerepo="epel" flag 
 sudo service redis start
 ```
+For other platforms, please see [Redis documentation](https://redis.io/).
+
 This project assumes the usual port `6379` on your host. Check you now have `redis` installed and working.
 ```
 redis-cli --version
@@ -89,19 +101,29 @@ you should see `PONG`.
 
 ---
 ## NGINX
-This can be used to protect your open/click tracking server. The [example config file](etc/nginx/conf/server_example.conf) in this project uses the following Nginx features/modules:
+This is not strictly required, but recommended. NGINX can be used to protect your open/click tracking server. The [example config file](etc/nginx/conf/server_example.conf) in this project uses the following Nginx features/modules:
 - http-ssl
 - http-v2
 - headers-more
 
 ### yum/EPEL/webtatic install on Amazon Linux
-If you have access to the EPEL and Webtatic repos on your platform, you can use `yum`-based install to get Nginx with added modules:
+If you have access to the EPEL and Webtatic repos on your platform, you can use `yum`-based install to get Nginx with added modules. The following is for Amazon Linux 2 AMI. For other platforms, see [NGINX documentation](https://www.nginx.com/resources/wiki/start/topics/tutorials/install/).
 ```
 sudo yum update -y
 sudo amazon-linux-extras install epel
 wget http://repo.webtatic.com/yum/el7/x86_64/RPMS/webtatic-release-7-3.noarch.rpm
 sudo rpm -Uvh webtatic-release-7-3.noarch.rpm
 sudo yum --enablerepo=webtatic install nginx1w nginx1w-module-headers-more
+sudo service nginx start
+nginx -V
+```
+
+Depending on your EPEL release, you may need a different Webtatic version and/or nginx package name. For example, Amazon Linux 1 AMI:
+
+```
+wget http://repo.webtatic.com/yum/el6/x86_64/webtatic-release-6-9.noarch.rpm
+sudo rpm -Uvh webtatic-release-6-9.noarch.rpm 
+sudo yum --enablerepo=webtatic install nginx nginx-all-modules
 sudo service nginx start
 nginx -V
 ```
