@@ -20,5 +20,5 @@ trk_queue.sh
 example*.eml
 smt.code-workspace
 debug.test
-
-
+# exclude goreleaser build directories, as these are put into the repo via goreleaser itself
+dist
