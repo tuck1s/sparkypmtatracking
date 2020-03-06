@@ -41,3 +41,10 @@ Logfile default location for this process is `/opt/pmta/acct_etl.log`.
 
 Redis key/value pairs hold data for each message ID, with a configured time-to-live (matching SparkPost's event retention).
 You can list these keys with `redis-cli keys msgID*`.
+
+Redis is used to persist the PowerMTA accounting record header field names and positions. You can see the current value with:
+```
+redis-cli get acct_headers
+
+"{\"header_x-sp-message-id\":2,\"header_x-sp-subaccount-id\":3,\"rcpt\":1,\"type\":0}"
+```

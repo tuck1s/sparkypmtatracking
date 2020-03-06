@@ -10,10 +10,17 @@ debug*.txt
 *.pem
 c.out
 # exclude local build binaries
+acct_etl
+tracker
+feeder
+wrapper
+linktool
+
 cmd/acct_etl/__debug_bin
 cmd/tracker/__debug_bin
 cmd/feeder/__debug_bin
 cmd/wrapper/__debug_bin
+cmd/linktool/__debug_bin
 # local test files
 setenvs.sh
 trk_queue.sh
