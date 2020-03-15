@@ -36,8 +36,8 @@ Usage of ./wrapper:
 ```
 
 Example setup that will:
-- Receive downstream client connections on localhost port 5587
-- Forward emails to an upstream PowerMTA server on port 587
+- Receive connections from downstream clients on port 5587 (IP version agnostic, i.e. incoming connections using IPv4 or IPv6 will be accepted, if your host supports it).
+- Forward emails to an upstream server on port 587
 - Offer its own TLS using the supplied certificates
 - Log activity to a file
 - All tracking options enabled.
@@ -54,7 +54,7 @@ Each phase of the SMTP conversation, including STARTTLS connection negotiation w
 
 ```
 Client      Proxy       Server
-       -> 
+       ->
                    ->
                    <-
        <-
@@ -168,5 +168,11 @@ The file is created afresh each time the program is started (i.e. not appended t
 
 Use with caution as debug files can get large.
 
+### track_click, track_initial_open, track_open
+The `-track_open` flag defaults to `true`, as the whole point of this project is to provide _some_ engagement tracking. The others default `false`.
+
+If you wish to disable `track_open`, , use the `--track_open=false` form, as per usual [Go flags](https://golang.org/pkg/flag/#hdr-Command_line_flag_syntax) syntax.
+
 ### example email files
 The project includes an [example file](../../example.eml) you can send with `swaks`. Adjust the `From:` and `To:` address to suit your configuration.
+
